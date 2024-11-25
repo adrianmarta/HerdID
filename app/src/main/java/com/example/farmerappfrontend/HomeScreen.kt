@@ -1,39 +1,20 @@
+// Updated HomeScreen.kt
 package com.example.farmerappfrontend
-
-// HomeScreen.kt
-
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-
-import kotlinx.coroutines.launch
+import androidx.navigation.NavController
 
 @Composable
-fun HomeScreen(token: String, onLogout: () -> Unit) {
-    var userProfile by remember { mutableStateOf<UserProfile?>(null) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf("") }
-
-    val scope = rememberCoroutineScope()
-
-    LaunchedEffect(token) {
-        scope.launch {
-            try {
-                val response = RetrofitClient.apiService.getUserProfile("Bearer $token")
-                userProfile = response
-            } catch (e: Exception) {
-                errorMessage = "Failed to load profile: ${e.message}"
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
+fun HomeScreen(
+    token: String,
+    onLogout: () -> Unit,
+    navController: NavController
+) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -41,34 +22,31 @@ fun HomeScreen(token: String, onLogout: () -> Unit) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
-        if (isLoading) {
-            CircularProgressIndicator()
-        }
-
-        userProfile?.let {
-            Text("Welcome, ${it.name}")
-            Spacer(modifier = Modifier.height(8.dp))
-            Text("ID: ${it.id}")
-            Text("Date of Birth: ${it.dob}")
-            Text("Address: ${it.address}")
-        }
-
-        errorMessage.takeIf { it.isNotEmpty() }?.let {
-            Text(it, color = MaterialTheme.colorScheme.error)
-        }
-
+        // Welcome Text
+        Text("Welcome to the Farmer App", style = MaterialTheme.typography.headlineMedium)
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Logout button
+        // Camera Button
+        Button(onClick = { navController.navigate("camera") }) {
+            Text("Camera")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Animals List Button
+        Button(onClick = { navController.navigate("animals") }) {
+            Text("Animal List")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Files Button
+        Button(onClick = { navController.navigate("files") }) {
+            Text("Files")
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Logout Button
         Button(onClick = { onLogout() }) {
             Text("Logout")
         }
     }
 }
-
-
-
-
-
-
-
