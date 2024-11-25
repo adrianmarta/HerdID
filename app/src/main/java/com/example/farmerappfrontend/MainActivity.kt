@@ -24,16 +24,17 @@ class MainActivity : ComponentActivity() {
 fun MyApp() {
     val navController = rememberNavController()
 
-    // Check if there is a saved token (this could be using SharedPreferences or another storage mechanism)
-    val token = TokenManager.getToken(LocalContext.current)
+    // Retrieve the token on initial launch (using LocalContext in composable context)
+    val context = LocalContext.current
+    val token = TokenManager.getToken(context) // This is now within composable context
 
     // Start navigation based on token existence
     NavHost(navController = navController, startDestination = if (token != null) "home/$token" else "login") {
         composable("login") {
             LoginScreen(
                 onLoginSuccess = { token ->
-                    // Save the token and navigate to home
-                    TokenManager.saveToken(LocalContext.current, token)
+                    // Save the token using TokenManager
+                    TokenManager.saveToken(context, token)
                     navController.navigate("home/$token") {
                         popUpTo("login") { inclusive = true } // Pop the login screen from the back stack
                     }
@@ -46,13 +47,14 @@ fun MyApp() {
                 token = token,
                 onLogout = {
                     // This is where the logout logic happens
-                    TokenManager.removeToken(LocalContext.current) // Remove the token (e.g., from SharedPreferences)
+                    TokenManager.removeToken(context) // Remove the token (e.g., from SharedPreferences)
                     navController.popBackStack("login", false) // Navigate to the login screen
                 }
             )
         }
     }
 }
+
 
 
 

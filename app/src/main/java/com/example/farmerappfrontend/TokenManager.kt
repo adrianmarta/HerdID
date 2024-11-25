@@ -3,28 +3,24 @@ import android.content.SharedPreferences
 
 object TokenManager {
 
-    private const val PREF_NAME = "user_prefs"
-    private const val TOKEN_KEY = "jwt_token"
+    private const val PREFS_NAME = "UserPrefs"
+    private const val TOKEN_KEY = "userToken"
 
-    // Function to save the JWT token in SharedPreferences
+    // Save token to SharedPreferences
     fun saveToken(context: Context, token: String) {
-        val sharedPreferences: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        editor.putString(TOKEN_KEY, token)
-        editor.apply()
+        val sharedPreferences: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        sharedPreferences.edit().putString(TOKEN_KEY, token).apply()
     }
 
-    // Function to retrieve the saved token from SharedPreferences
+    // Get the saved token from SharedPreferences
     fun getToken(context: Context): String? {
-        val sharedPreferences: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        val sharedPreferences: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return sharedPreferences.getString(TOKEN_KEY, null)
     }
 
-    // Function to remove the token from SharedPreferences
+    // Remove token from SharedPreferences
     fun removeToken(context: Context) {
-        val sharedPreferences: SharedPreferences = context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
-        val editor = sharedPreferences.edit()
-        editor.remove(TOKEN_KEY)
-        editor.apply()
+        val sharedPreferences: SharedPreferences = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        sharedPreferences.edit().remove(TOKEN_KEY).apply()
     }
 }
