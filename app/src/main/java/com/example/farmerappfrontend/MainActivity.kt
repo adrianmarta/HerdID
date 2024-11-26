@@ -41,8 +41,11 @@ fun MyApp() {
         }
         composable("home/{token}") { backStackEntry ->
             val token = backStackEntry.arguments?.getString("token") ?: ""
+            // Retrieve userId based on token or pass it if available
+            val userId = "yourUserIdHere" // You can fetch or store the userId here
             HomeScreen(
                 token = token,
+                userId = userId, // Pass userId here
                 onLogout = {
                     TokenManager.removeToken(context)
                     navController.popBackStack("login", false)
@@ -50,10 +53,20 @@ fun MyApp() {
                 navController = navController
             )
         }
+        composable("animals/{userId}") { backStackEntry ->
+            val userId = backStackEntry.arguments?.getString("userId") ?: ""
+            if (token != null) {
+                AnimalListScreen(
+                    token = token,  // You still need to pass the token here
+                    userId = userId
+                )
+            }
+
+        }
         composable("camera") { CameraScreen() }
-        composable("animals") { AnimalListScreen(token = token ?: "") }
         composable("files") { FilesScreen() }
     }
+
 }
 
 

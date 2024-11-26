@@ -1,8 +1,8 @@
-// AnimalListScreen.kt
 package com.example.farmerappfrontend
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -10,7 +10,7 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 
 @Composable
-fun AnimalListScreen(token: String) {
+fun AnimalListScreen(token: String, userId: String) {
     var animals by remember { mutableStateOf<List<Animal>>(emptyList()) }
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
@@ -18,7 +18,12 @@ fun AnimalListScreen(token: String) {
     LaunchedEffect(Unit) {
         scope.launch {
             try {
-                animals = RetrofitClient.apiService.getAllAnimals("Bearer $token")
+                val response = RetrofitClient.apiService.getAnimalsByOwnerId(userId, "Bearer $token")
+                if (response.isSuccessful) {
+                    animals = response.body() ?: emptyList()
+                } else {
+                    errorMessage = "Error fetching animals: ${response.message()}"
+                }
             } catch (e: Exception) {
                 errorMessage = "Error fetching animals: ${e.message}"
             }
@@ -52,6 +57,3 @@ fun AnimalListScreen(token: String) {
         }
     }
 }
-
-// Animal data class
-data class Animal(val id: String, val gender: String, val birthDate: String)

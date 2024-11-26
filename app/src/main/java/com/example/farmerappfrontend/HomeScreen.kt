@@ -9,9 +9,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 
+
 @Composable
 fun HomeScreen(
     token: String,
+    userId: String, // Pass userId as a parameter
     onLogout: () -> Unit,
     navController: NavController
 ) {
@@ -32,8 +34,8 @@ fun HomeScreen(
         }
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Animals List Button
-        Button(onClick = { navController.navigate("animals") }) {
+        // Animals List Button (Now passing userId and token)
+        Button(onClick = { navController.navigate("animals/$userId") }) {
             Text("Animal List")
         }
         Spacer(modifier = Modifier.height(16.dp))

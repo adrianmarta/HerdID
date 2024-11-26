@@ -2,12 +2,12 @@
 package com.example.farmerappfrontend
 
 
-import com.google.android.gms.common.api.Response
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.Response
 
 interface ApiService {
 
@@ -17,7 +17,7 @@ interface ApiService {
     @GET("/api/users/profile")
     suspend fun getUserProfile(@Header("Authorization") token: String): UserProfile
     // ApiService.kt
-    @GET("/owner/{ownerId}")
+    @GET("api/animals/owner/{ownerId}")
     suspend fun getAnimalsByOwnerId(
         @Path("ownerId") ownerId: String,
         @Header("Authorization") token: String
