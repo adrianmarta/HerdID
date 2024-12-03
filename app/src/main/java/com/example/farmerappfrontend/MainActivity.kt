@@ -9,7 +9,15 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+
+import androidx.compose.foundation.layout.*
+
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import com.example.farmerappfrontend.ui.theme.FarmerAppFrontendTheme
+
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,18 +49,44 @@ fun MyApp() {
         }
         composable("home/{token}") { backStackEntry ->
             val token = backStackEntry.arguments?.getString("token") ?: ""
-            // Retrieve userId based on token or pass it if available
-            val userId = "yourUserIdHere" // You can fetch or store the userId here
-            HomeScreen(
-                token = token,
-                userId = userId, // Pass userId here
-                onLogout = {
-                    TokenManager.removeToken(context)
-                    navController.popBackStack("login", false)
-                },
-                navController = navController
-            )
+            var userId by remember { mutableStateOf<String?>(null) }
+            var errorMessage by remember { mutableStateOf<String?>(null) }
+
+            // Fetch the userId from the server or decode it from the token
+            LaunchedEffect(token) {
+                try {
+                    val userProfile = RetrofitClient.apiService.getUserProfile("Bearer $token") // Adjust this call if needed
+                    userId = userProfile.id // Assuming the API returns a `UserProfile` with an `id` field
+                } catch (e: Exception) {
+                    errorMessage = "Failed to fetch user ID: ${e.message}"
+                }
+            }
+
+            if (userId != null) {
+                HomeScreen(
+                    token = token,
+                    userId = userId!!, // Pass the fetched userId to HomeScreen
+                    onLogout = {
+                        TokenManager.removeToken(context)
+                        navController.popBackStack("login", false)
+                    },
+                    navController = navController
+                )
+            } else {
+                // Show a loading or error state while fetching the userId
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    if (errorMessage != null) {
+                        Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
+                    } else {
+                        CircularProgressIndicator()
+                    }
+                }
+            }
         }
+
         composable("animals/{userId}") { backStackEntry ->
             val userId = backStackEntry.arguments?.getString("userId") ?: ""
             if (token != null) {
