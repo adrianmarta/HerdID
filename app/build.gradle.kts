@@ -58,6 +58,8 @@ dependencies {
     implementation(libs.mediation.test.suite)
     implementation(libs.androidx.navigation.compose)
     implementation("com.google.android.gms:play-services-ads:23.3.0")
+    implementation(libs.vision.common)
+    implementation(libs.play.services.mlkit.text.recognition.common)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
@@ -65,4 +67,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    // CameraX dependencies
+
+
 }

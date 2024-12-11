@@ -98,7 +98,9 @@ fun MyApp() {
 
         }
         composable("camera") { CameraScreen() }
-        composable("files") { FilesScreen() }
+        composable("files") {
+            FilesScreen(navController) // Pass the navController to FilesScreen
+        }
     }
 
 }
