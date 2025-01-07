@@ -1,21 +1,17 @@
 package com.example.farmerappfrontend
 
 import android.widget.Toast
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 
@@ -25,39 +21,60 @@ fun FilesScreen(navController: NavController) {
     var isCreating by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isFileDialogOpen by remember { mutableStateOf(false) }
-    var files by remember { mutableStateOf(listOf("File1.txt", "File2.docx")) } // Mock file data
+    var files by remember { mutableStateOf<List<Folder>>(emptyList()) } // Now stores a list of Folder objects
 
     val token = TokenManager.getToken(navController.context)
     val coroutineScope = rememberCoroutineScope()
 
-    fun createFolder() {
+    // Fetch files from backend
+    fun fetchFiles() {
+        coroutineScope.launch {
+            try {
+                val userProfile = RetrofitClient.apiService.getUserProfile("Bearer $token")
+                val ownerId = userProfile.id
+                val response = RetrofitClient.apiService.getFolders("Bearer $token", ownerId)
+                if (response.isSuccessful) {
+                    files = response.body() ?: emptyList()
+                } else {
+                    errorMessage = "Failed to fetch files: ${response.message()}"
+                }
+            } catch (e: Exception) {
+                errorMessage = "Error fetching files: ${e.message}"
+            }
+        }
+    }
+
+    // Function to create a folder in the backend
+    fun createFolder(folderName: String) {
         if (folderName.isNotBlank()) {
             isCreating = true
-            errorMessage = null
             coroutineScope.launch {
                 try {
                     val userProfile = RetrofitClient.apiService.getUserProfile("Bearer $token")
                     val ownerId = userProfile.id
-
                     val folderRequest = FolderRequest(name = folderName, ownerId = ownerId)
-                    val response = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
 
+                    val response = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
                     if (response.isSuccessful) {
                         Toast.makeText(navController.context, "Folder '$folderName' created successfully.", Toast.LENGTH_SHORT).show()
-                        folderName = ""
+                        fetchFiles() // Refresh the list after creating a folder
                     } else {
                         errorMessage = "Failed to create folder: ${response.message()}"
                     }
-
-                    isCreating = false
                 } catch (e: Exception) {
-                    errorMessage = "Error: ${e.message}"
+                    errorMessage = "Error creating folder: ${e.message}"
+                } finally {
                     isCreating = false
                 }
             }
         } else {
-            errorMessage = "Please enter a folder name."
+            errorMessage = "Folder name cannot be empty."
         }
+    }
+
+    // Fetch files when the screen is first loaded
+    LaunchedEffect(Unit) {
+        fetchFiles()
     }
 
     @Composable
@@ -76,7 +93,7 @@ fun FilesScreen(navController: NavController) {
                         onValueChange = { fileName = it },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(Color.Gray.copy(alpha = 0.1f), shape = MaterialTheme.shapes.small)
+                            .background(Color.Gray.copy(alpha = 0.1f))
                             .padding(16.dp)
                     )
                 }
@@ -108,47 +125,14 @@ fun FilesScreen(navController: NavController) {
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Folder Creation Section
-        Column(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            BasicTextField(
-                value = folderName,
-                onValueChange = { folderName = it },
-                keyboardOptions = KeyboardOptions.Default.copy(
-                    imeAction = ImeAction.Done
-                ),
-                keyboardActions = KeyboardActions(
-                    onDone = { createFolder() }
-                ),
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(8.dp)
-                    .background(Color.Gray.copy(alpha = 0.1f), shape = MaterialTheme.shapes.small)
-                    .padding(16.dp)
+        // Display error message if any
+        if (errorMessage != null) {
+            Text(
+                errorMessage!!,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(8.dp)
             )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            if (errorMessage != null) {
-                Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Button(
-                onClick = { createFolder() },
-                enabled = !isCreating,
-                modifier = Modifier.fillMaxWidth().padding(8.dp)
-            ) {
-                if (isCreating) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.White)
-                } else {
-                    Text("Create Folder", style = MaterialTheme.typography.bodyLarge)
-                }
-            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -159,8 +143,17 @@ fun FilesScreen(navController: NavController) {
         Spacer(modifier = Modifier.height(8.dp))
 
         Column(modifier = Modifier.fillMaxWidth()) {
-            files.forEach { file ->
-                Text(file, modifier = Modifier.padding(vertical = 4.dp))
+            files.forEach { folder ->
+                Text(
+                    folder.name, // Display the folder name
+                    modifier = Modifier
+                        .padding(vertical = 4.dp)
+                        .clickable {
+                            navController.navigate("folder/${folder.id}/animals") // Navigate to AnimalListScreenByFolder
+                        },
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.bodyLarge
+                )
             }
         }
 
@@ -179,10 +172,7 @@ fun FilesScreen(navController: NavController) {
         FileCreationDialog(
             onDismiss = { isFileDialogOpen = false },
             onCreate = { newFile ->
-                if (newFile.isNotBlank()) {
-                    files = files + newFile
-                    Toast.makeText(navController.context, "File '$newFile' created successfully.", Toast.LENGTH_SHORT).show()
-                }
+                createFolder(newFile)
             }
         )
     }

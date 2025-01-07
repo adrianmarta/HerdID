@@ -35,4 +35,28 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Body folderRequest: FolderRequest
     ): Response<Void>
+    @GET("/api/folders/user/{ownerId}")
+    suspend fun getFolders(
+        @Header("Authorization") token: String,
+        @Path("ownerId") ownerId: String
+    ): Response<List<Folder>>
+    @GET("/api/folders/{folderId}/animals")
+    suspend fun getAnimalsByFolderId(
+        @Path("folderId") folderId: String,
+        @Header("Authorization") token: String
+    ): Response<List<Animal>>
+    @POST("/api/folders/{folderId}/add-existing-animal/{animalId}")
+    suspend fun addAnimalToFolder(
+        @Path("folderId") folderId: String,
+        @Path("animalId") animalId:String,
+        @Header("Authorization") token: String,
+
+    ): Response<Void>
+    @GET("/api/animals/exists/{id}")
+    suspend fun checkAnimalExists(
+        @Path("id") animalId: String,
+        @Header("Authorization") token: String
+    ): Response<Boolean>
+
+
 }

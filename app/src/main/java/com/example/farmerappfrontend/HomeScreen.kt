@@ -82,8 +82,7 @@ fun HomeScreen(
             verticalArrangement = Arrangement.Center // Center vertically within the available space
         ) {
             // Camera Button
-            Button(
-                onClick = { navController.navigate("camera") },
+            Button(onClick = { navController.navigate("camera/$token")  },
                 modifier = Modifier
                     .width(250.dp) // Increased button width
                     .padding(vertical = 12.dp) // Vertical padding for spacing

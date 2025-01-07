@@ -14,3 +14,9 @@ data class FolderRequest(
     val name: String,    // Folder name
     val ownerId: String  // Owner ID
 )
+data class Folder(
+    val id: String,
+    val name: String,
+    val ownerId: String
+)
+
