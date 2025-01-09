@@ -11,6 +11,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 
 import androidx.compose.foundation.layout.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -118,12 +121,10 @@ fun MyApp() {
             composable("animals/{userId}") { backStackEntry ->
                 val userId = backStackEntry.arguments?.getString("userId") ?: ""
                 if (token != null) {
-                    AnimalListScreen(
-                        token = token,
-                        userId = userId
-                    )
+                    AnimalListScreen(token = token, userId = userId, navController = navController)
                 }
             }
+
             composable("camera/{token}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
                 CameraScreen(token = token) // Pass the token here
@@ -136,7 +137,8 @@ fun MyApp() {
                 if (token != null) {
                     AnimalListScreen(
                         token = token,
-                        userId = folderName // Here, the folder name acts as an identifier for animals in the folder
+                        userId = folderName,
+                        navController = navController // Here, the folder name acts as an identifier for animals in the folder
                     )
                 }
             }
@@ -145,10 +147,76 @@ fun MyApp() {
                 if (token != null) {
                     AnimalListScreenByFolder(
                         token = token,
-                        folderId = folderId
+                        folderId = folderId,
+                        navController=navController
                     )
                 }
             }
+            composable("countAnimals/{token}/{ownerId}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                val ownerId = backStackEntry.arguments?.getString("ownerId") ?: ""
+                var animalIds by remember { mutableStateOf<List<String>>(emptyList()) }
+                var isLoading by remember { mutableStateOf(true) }
+                val scope = rememberCoroutineScope()
+
+                LaunchedEffect(Unit) {
+                    scope.launch {
+                        try {
+                            val response = RetrofitClient.apiService.getAnimalsByOwnerId(ownerId, "Bearer $token")
+                            if (response.isSuccessful) {
+                                animalIds = response.body()?.map { it.id } ?: emptyList()
+                            }
+                        } catch (e: Exception) {
+                            // Handle error (e.g., show a message or log the error)
+                        } finally {
+                            isLoading = false
+                        }
+                    }
+                }
+
+                if (isLoading) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    CountingCamera(
+                        token = token,
+                        animalIds = animalIds,
+                        onComplete = { notReadIds ->
+                            navController.navigate(
+                                "notReadAnimals/$token/${notReadIds.joinToString(",")}/$ownerId"
+                            ) {
+                                popUpTo("countAnimals/$token/$ownerId") { inclusive = true }
+                            }
+                        }
+                    )
+                }
+            }
+
+
+            composable("notReadAnimals/{token}/{notReadIds}/{ownerId}?folderId={folderId}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                val notReadIdsString = backStackEntry.arguments?.getString("notReadIds") ?: ""
+                val notReadIds = notReadIdsString.split(",")
+                val ownerId = backStackEntry.arguments?.getString("ownerId") ?: ""
+                val folderId = backStackEntry.arguments?.getString("folderId") // Extract folderId if present
+
+                NotReadAnimalsScreen(
+                    token = token,
+                    animalIds = notReadIds,
+                    ownerId = ownerId,
+                    onNavigateBack = { navController.popBackStack() },
+                    folderId = folderId // Pass folderId to NotReadAnimalsScreen
+                )
+            }
+
+
+
+
+
         }
     }
 }

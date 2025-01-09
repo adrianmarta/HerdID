@@ -2,6 +2,8 @@
 package com.example.farmerappfrontend
 
 
+
+import com.google.android.gms.common.internal.safeparcel.SafeParcelable.Param
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -9,6 +11,8 @@ import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.Response
 import retrofit2.http.DELETE
+import retrofit2.http.PUT
+import retrofit2.http.Query
 
 interface ApiService {
 
@@ -23,6 +27,10 @@ interface ApiService {
         @Path("ownerId") ownerId: String,
         @Header("Authorization") token: String
     ): Response<List<Animal>>
+    @GET("/list")
+    suspend fun getAnimalsByIds(
+        @retrofit2.http.Query("ids") ids: List<String>
+    ): Response<List<Animal>>
 
     @DELETE("/api/animals/{id}")
     suspend fun deleteAnimal(
@@ -34,7 +42,7 @@ interface ApiService {
     suspend fun createFolder(
         @Header("Authorization") token: String,
         @Body folderRequest: FolderRequest
-    ): Response<Void>
+    ): Response<FolderResponse>
     @GET("/api/folders/user/{ownerId}")
     suspend fun getFolders(
         @Header("Authorization") token: String,
@@ -45,11 +53,11 @@ interface ApiService {
         @Path("folderId") folderId: String,
         @Header("Authorization") token: String
     ): Response<List<Animal>>
-    @POST("/api/folders/{folderId}/add-existing-animal/{animalId}")
+    @PUT("/api/folders/{folderId}/add-existing-animal/{animalId}")
     suspend fun addAnimalToFolder(
         @Path("folderId") folderId: String,
         @Path("animalId") animalId:String,
-        @Header("Authorization") token: String,
+        @Header("Authorization") token: String
 
     ): Response<Void>
     @GET("/api/animals/exists/{id}")
@@ -58,5 +66,16 @@ interface ApiService {
         @Header("Authorization") token: String
     ): Response<Boolean>
 
-
+    @PUT("/api/folders/{folderId}/remove-animals")
+    suspend fun removeAnimalsFromFolder(
+        @Path("folderId") folderId: String,
+        @Body animalIds: List<String>,
+        @Header("Authorization") token: String
+    ): Response<Void>
+    @PUT("/api/folders/{folderId}/add-animals")
+    suspend fun addAnimalsToFolder(
+        @Path("folderId") folderId: String,
+        @Body animalIds: List<String>,
+        @Header("Authorization") authorization: String
+    ): Response<Unit>
 }

@@ -14,47 +14,49 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
+import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.Dispatchers
 
 @Composable
-fun AnimalListScreen(token: String, userId: String) {
+fun AnimalListScreen(token: String, userId: String, navController: NavController) {
+    val scope = rememberCoroutineScope()
     var animals by remember { mutableStateOf<List<Animal>>(emptyList()) }
     var filteredAnimals by remember { mutableStateOf<List<Animal>>(emptyList()) }
-    var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var errorMessage by remember { mutableStateOf("") }
     var searchQuery by remember { mutableStateOf("") }
-    val scope = rememberCoroutineScope()
+    var isCounting by remember { mutableStateOf(false) }
+    var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
+     // Add navController for navigation
 
-    // Fetch the animals list
+    // Fetch animals on component load
     LaunchedEffect(Unit) {
         scope.launch {
             try {
                 val response = RetrofitClient.apiService.getAnimalsByOwnerId(userId, "Bearer $token")
                 if (response.isSuccessful) {
                     animals = response.body() ?: emptyList()
-                    filteredAnimals = animals
-                } else {
-                    errorMessage = "Error fetching animals: ${response.message()}"
+                    filteredAnimals = animals // Set initial filter
                 }
             } catch (e: Exception) {
-                errorMessage = "Error fetching animals: ${e.message}"
+                // Handle error
             }
         }
     }
 
-    // Filter animals based on search query
+    // Filter animals when the search query changes
     LaunchedEffect(searchQuery) {
         filteredAnimals = if (searchQuery.isEmpty()) {
             animals
         } else {
             animals.filter { animal ->
-                animal.id.contains(searchQuery, ignoreCase = true) || // Search by animal ID
-                        animal.birthDate.contains(searchQuery, ignoreCase = true) // Search by birth date
+                animal.id.contains(searchQuery, ignoreCase = true) ||
+                        animal.birthDate.contains(searchQuery, ignoreCase = true)
             }
         }
     }
 
-    // Screen Layout
+    // Layout
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -70,63 +72,56 @@ fun AnimalListScreen(token: String, userId: String) {
 
         // Title
         Text(
-            "Animal List",
+            "Animals List",
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.primary
         )
-        Spacer(modifier = Modifier.height(16.dp))
 
-        // Error Message
-        if (errorMessage.isNotEmpty()) {
-            Text(
-                errorMessage,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.padding(8.dp)
-            )
+        // Count Button
+        Button(
+            onClick = {
+                isCounting = true
+            },
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+        ) {
+            Text("Count Animals")
         }
 
         // Animal List
-        if (filteredAnimals.isEmpty() && errorMessage.isEmpty()) {
-            // Loading/Empty State
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        } else {
-            // Display Animal Rows
-            LazyColumn(
-                contentPadding = PaddingValues(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(filteredAnimals) { animal ->
-                    AnimalRow(animal, selectedAnimals) { animalId ->
-                        // Toggle the selected state of the animal
+        LazyColumn(
+            contentPadding = PaddingValues(vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(filteredAnimals) { animal ->
+                AnimalRow(
+                    animal = animal,
+                    selectedAnimals = selectedAnimals,
+                    onAnimalClick = { animalId ->
                         selectedAnimals = if (selectedAnimals.contains(animalId)) {
                             selectedAnimals - animalId
                         } else {
                             selectedAnimals + animalId
                         }
                     }
-                }
-            }
-
-            // Delete Button (only visible if any animals are selected)
-            if (selectedAnimals.isNotEmpty()) {
-                Button(
-                    onClick = {
-                        deleteSelectedAnimals(selectedAnimals, token, scope)
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-                ) {
-                    Text("Delete Selected Animals")
-                }
+                )
             }
         }
     }
+
+    // Show Counting Camera and Navigate to NotReadAnimalsScreen with IDs
+    if (isCounting) {
+        CountingCamera(
+            token = token,
+            animalIds = animals.map { it.id },
+            onComplete = { idsNotRead ->
+                isCounting = false
+                navController.navigate("notReadAnimals/$token/${idsNotRead.joinToString(",")}/$userId")
+            }
+        )
+    }
 }
+
+
 
 @Composable
 fun AnimalRow(animal: Animal, selectedAnimals: Set<String>, onAnimalClick: (String) -> Unit) {
@@ -151,10 +146,9 @@ fun AnimalRow(animal: Animal, selectedAnimals: Set<String>, onAnimalClick: (Stri
     }
 }
 
-fun deleteSelectedAnimals(selectedAnimals: Set<String>, token: String, scope: CoroutineScope) {
-    scope.launch {
-        // Iterate through the selected animals and delete each one
-        for (animalId in selectedAnimals) {
+fun deleteSelectedAnimals(selectedAnimals: Set<String>, token: String) {
+    CoroutineScope(Dispatchers.IO).launch {
+        selectedAnimals.forEach { animalId ->
             try {
                 val response = RetrofitClient.apiService.deleteAnimal(animalId, "Bearer $token")
                 if (response.isSuccessful) {
@@ -168,4 +162,3 @@ fun deleteSelectedAnimals(selectedAnimals: Set<String>, token: String, scope: Co
         }
     }
 }
-

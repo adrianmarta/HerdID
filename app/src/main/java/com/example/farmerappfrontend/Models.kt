@@ -19,4 +19,8 @@ data class Folder(
     val name: String,
     val ownerId: String
 )
-
+data class FolderResponse(
+    val id:String,
+    val name:String,
+    val ownerId: String
+)
