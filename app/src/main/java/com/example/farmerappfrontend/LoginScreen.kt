@@ -13,6 +13,7 @@ import androidx.compose.ui.unit.dp
 
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(onLoginSuccess: (String) -> Unit) {
     var id by remember { mutableStateOf("") }
@@ -31,7 +32,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
     ) {
         // Title
         Text(
-            "Login",
+            text = "Login",
             style = MaterialTheme.typography.headlineLarge,
             color = MaterialTheme.colorScheme.primary
         )
@@ -39,38 +40,40 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
         Spacer(modifier = Modifier.height(32.dp))
 
         // ID Input
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text("ID", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            Spacer(modifier = Modifier.height(4.dp))
-            BasicTextField(
-                value = id,
-                onValueChange = { id = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(70.dp) // Make input box taller
-                    .padding(16.dp)
-                    .border(1.dp, Color.Gray), // Border around the input box
-                textStyle = MaterialTheme.typography.bodyLarge // Larger text to match the size of the input box
+        OutlinedTextField(
+            value = id,
+            onValueChange = { id = it },
+            label = { Text("ID") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge,
+            colors = TextFieldDefaults.outlinedTextFieldColors(
+                containerColor = MaterialTheme.colorScheme.background,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = Color.Gray
             )
-        }
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
         // CNP Input
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Text("CNP", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
-            Spacer(modifier = Modifier.height(4.dp))
-            BasicTextField(
-                value = cnp,
-                onValueChange = { cnp = it },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(70.dp) // Make input box taller
-                    .padding(16.dp)
-                    .border(1.dp, Color.Gray), // Border around the input box
-                textStyle = MaterialTheme.typography.bodyLarge // Larger text to match the size of the input box
+        OutlinedTextField(
+            value = cnp,
+            onValueChange = { cnp = it },
+            label = { Text("CNP") },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp),
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyLarge,
+            colors = TextFieldDefaults.outlinedTextFieldColors(
+                containerColor = MaterialTheme.colorScheme.background,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                unfocusedBorderColor = Color.Gray
             )
-        }
+        )
 
         Spacer(modifier = Modifier.height(32.dp))
 
@@ -84,7 +87,7 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
                         val loginRequest = LoginRequest(id, cnp)
                         val response = RetrofitClient.apiService.login(loginRequest)
 
-                        onLoginSuccess(response.token)  // Passing token to home screen
+                        onLoginSuccess(response.token) // Pass token to home screen
                     } catch (e: Exception) {
                         errorMessage = "Login failed: ${e.message}"
                     } finally {
@@ -95,21 +98,30 @@ fun LoginScreen(onLoginSuccess: (String) -> Unit) {
             enabled = !isLoading,
             modifier = Modifier
                 .fillMaxWidth()
-                .height(56.dp), // Making button bigger
-            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8A56E2))  // The original purple color
+                .padding(horizontal = 8.dp)
+                .height(56.dp), // Larger button
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
-            Text("Login", color = Color.White)  // White text color for better contrast
+            Text("Login", color = Color.White, style = MaterialTheme.typography.bodyLarge)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Loading or error message
+        // Loading Indicator or Error Message
         if (isLoading) {
-            CircularProgressIndicator(modifier = Modifier.padding(16.dp))
+            CircularProgressIndicator(
+                modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.primary
+            )
         }
 
         if (errorMessage.isNotEmpty()) {
-            Text(errorMessage, color = MaterialTheme.colorScheme.error)
+            Text(
+                text = errorMessage,
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(horizontal = 16.dp)
+            )
         }
     }
 }

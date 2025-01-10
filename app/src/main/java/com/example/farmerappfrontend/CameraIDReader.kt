@@ -144,7 +144,17 @@ private fun analyzeImage(
     }
 }
 
+
 private fun extractAnimalIdFromText(visionText: Text): String? {
-    val regex = Regex("\\b[A-Z]{2}\\d{10}\\b") // Example: Detect IDs like "RO1234567890"
-    return regex.find(visionText.text)?.value
+    // Normalize the text by removing extra spaces and line breaks
+    val normalizedText = visionText.text.replace("\\s+".toRegex(), "")
+
+    // Updated regex to capture "RO" followed by 4 digits and then 6 digits
+    val regex = Regex("RO\\d{10}")
+
+    // Match the pattern in the normalized text
+    val match = regex.find(normalizedText)
+
+    // Return the matched value if found, otherwise return null
+    return match?.value
 }

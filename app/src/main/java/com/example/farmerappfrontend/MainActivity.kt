@@ -144,11 +144,13 @@ fun MyApp() {
             }
             composable("folder/{folderId}/animals") { backStackEntry ->
                 val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
+                val userId = backStackEntry.arguments?.getString("userId") ?: ""
                 if (token != null) {
                     AnimalListScreenByFolder(
                         token = token,
                         folderId = folderId,
-                        navController=navController
+                        navController=navController,
+                        ownerId = userId
                     )
                 }
             }

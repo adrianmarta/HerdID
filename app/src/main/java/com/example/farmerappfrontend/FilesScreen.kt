@@ -1,10 +1,15 @@
 package com.example.farmerappfrontend
+import com.example.farmerappfrontend.Folder
 
+import androidx.compose.material.icons.filled.Folder
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -15,13 +20,15 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FilesScreen(navController: NavController) {
     var folderName by remember { mutableStateOf("") }
     var isCreating by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var isFileDialogOpen by remember { mutableStateOf(false) }
-    var files by remember { mutableStateOf<List<Folder>>(emptyList()) } // Now stores a list of Folder objects
+    var files by remember { mutableStateOf<List<Folder>>(emptyList()) }
+    var selectedFolders by remember { mutableStateOf<Set<String>>(emptySet()) } // Track selected folders
 
     val token = TokenManager.getToken(navController.context)
     val coroutineScope = rememberCoroutineScope()
@@ -56,7 +63,6 @@ fun FilesScreen(navController: NavController) {
 
                     val response = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
                     if (response.isSuccessful) {
-                        Toast.makeText(navController.context, "Folder '$folderName' created successfully.", Toast.LENGTH_SHORT).show()
                         fetchFiles() // Refresh the list after creating a folder
                     } else {
                         errorMessage = "Failed to create folder: ${response.message()}"
@@ -72,6 +78,26 @@ fun FilesScreen(navController: NavController) {
         }
     }
 
+    // Function to delete selected folders
+    fun deleteFolders(folderIds: Set<String>) {
+        coroutineScope.launch {
+            try {
+                folderIds.forEach { folderId ->
+                    val response = RetrofitClient.apiService.deleteFolder(folderId, "Bearer $token")
+                    if (!response.isSuccessful) {
+                        errorMessage = "Failed to delete folder: ${response.message()}"
+                        return@forEach
+                    }
+                }
+                // Refresh the folder list after deletion
+                fetchFiles()
+                selectedFolders = emptySet() // Clear selection
+            } catch (e: Exception) {
+                errorMessage = "Error deleting folders: ${e.message}"
+            }
+        }
+    }
+
     // Fetch files when the screen is first loaded
     LaunchedEffect(Unit) {
         fetchFiles()
@@ -83,18 +109,16 @@ fun FilesScreen(navController: NavController) {
 
         AlertDialog(
             onDismissRequest = onDismiss,
-            title = { Text("Create File") },
+            title = { Text("Create Folder") },
             text = {
                 Column {
-                    Text("Enter file name:")
+                    Text("Enter folder name:")
                     Spacer(modifier = Modifier.height(8.dp))
-                    BasicTextField(
+                    TextField(
                         value = fileName,
                         onValueChange = { fileName = it },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(Color.Gray.copy(alpha = 0.1f))
-                            .padding(16.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Folder Name") }
                     )
                 }
             },
@@ -114,57 +138,120 @@ fun FilesScreen(navController: NavController) {
         )
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Top
-    ) {
-        Text("Files Screen", style = MaterialTheme.typography.headlineMedium)
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Display error message if any
-        if (errorMessage != null) {
-            Text(
-                errorMessage!!,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(8.dp)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("HerdID") },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(MaterialTheme.colorScheme.primary)
             )
         }
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            Spacer(modifier = Modifier.height(8.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Existing Files Section
-        Text("Existing Files:", fontWeight = FontWeight.Bold)
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        Column(modifier = Modifier.fillMaxWidth()) {
-            files.forEach { folder ->
+            // Display error message if any
+            errorMessage?.let {
                 Text(
-                    folder.name, // Display the folder name
-                    modifier = Modifier
-                        .padding(vertical = 4.dp)
-                        .clickable {
-                            navController.navigate("folder/${folder.id}/animals") // Navigate to AnimalListScreenByFolder
-                        },
-                    color = MaterialTheme.colorScheme.primary,
-                    style = MaterialTheme.typography.bodyLarge
+                    it,
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodyMedium,
+                    modifier = Modifier.padding(8.dp)
                 )
             }
-        }
 
-        Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
-        // Create File Button
-        Button(
-            onClick = { isFileDialogOpen = true },
-            modifier = Modifier.fillMaxWidth().padding(8.dp)
-        ) {
-            Text("Create File")
+            // Buttons (Add File and Delete)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Button(
+                    onClick = { isFileDialogOpen = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Add Folder", color = MaterialTheme.colorScheme.onPrimary)
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Button(
+                    onClick = {
+                        deleteFolders(selectedFolders)
+                    },
+                    enabled = selectedFolders.isNotEmpty(), // Enable only if folders are selected
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    shape = MaterialTheme.shapes.medium,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Delete", color = MaterialTheme.colorScheme.onPrimary)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Existing Files Section
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f), // Ensure it takes the available space
+                contentPadding = PaddingValues(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(files) { folder ->
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                        colors = if (selectedFolders.contains(folder.id)) {
+                            CardDefaults.cardColors(containerColor = Color(0xFF90CAF9)) // Highlight selected
+                        } else {
+                            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+                        }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f).clickable {
+                                    navController.navigate("folder/${folder.id}/animals") // Navigate to folder content
+                                }
+                            ) {
+                                Text(
+                                    folder.name,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            Checkbox(
+                                checked = selectedFolders.contains(folder.id),
+                                onCheckedChange = { isChecked ->
+                                    selectedFolders = if (isChecked) {
+                                        selectedFolders + folder.id
+                                    } else {
+                                        selectedFolders - folder.id
+                                    }
+                                }
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 

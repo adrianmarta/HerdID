@@ -12,109 +12,100 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     token: String,
-    userId: String, // Pass userId as a parameter
+    userId: String,
     onLogout: () -> Unit,
     navController: NavController
 ) {
-    // Define the new purple color for both the header and the buttons
-    val customPurple = Color(0xFF6650a4) // Updated color
+    val customPurple = Color(0xFF6650a4) // Primary color for branding
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(0.dp), // Remove padding from the outer column to avoid extra space
-    ) {
-        // Header with HerdID and Logout button, no space between the top and header
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .background(customPurple) // Set the background color for the header
-                .padding(16.dp) // Padding inside the header to create space around the content
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Bigger Logout Button
-                IconButton(
-                    onClick = { onLogout()
-                        navController.navigate("login") { // Navigate to the login screen
-                            popUpTo("home") { inclusive = true }
-                        }
-                    },
-                    modifier = Modifier
-                        .size(56.dp) // Bigger button size
-                        .background(customPurple, shape = MaterialTheme.shapes.medium) // Rounded button
-                        .border(0.dp, Color.Transparent) // Ensures no border around logout button
-                ) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
                     Text(
-                        "LogOut",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 16.sp // Increase font size for better visibility
+                        text = "HerdID",
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = Color.White
                     )
-                }
-
-                // HerdID Logo
-                Text(
-                    "HerdID",
-                    fontWeight = FontWeight.Bold,
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = Color.White
+                },
+                actions = {
+                    Button(
+                        onClick = {
+                            onLogout()
+                            navController.navigate("login") {
+                                popUpTo("home") { inclusive = true }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                        contentPadding = PaddingValues(horizontal = 16.dp) // Add padding to fit the text properly
+                    ) {
+                        Text(
+                            "Log Out",
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 16.sp
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = customPurple,
+                    titleContentColor = Color.White
                 )
-            }
-        }
-
-        // Space between the header and the buttons
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Center the remaining buttons
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background // Ensure a consistent background
+    ) { innerPadding ->
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f), // Take up available space to center the buttons
-            horizontalAlignment = Alignment.CenterHorizontally, // Center the buttons horizontally
-            verticalArrangement = Arrangement.Center // Center vertically within the available space
+                .fillMaxSize()
+                .padding(innerPadding),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
             // Camera Button
-            Button(onClick = { navController.navigate("camera/$token")  },
+            Button(
+                onClick = { navController.navigate("camera/$token") },
+                colors = ButtonDefaults.buttonColors(containerColor = customPurple),
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier
-                    .width(250.dp) // Increased button width
-                    .padding(vertical = 12.dp) // Vertical padding for spacing
-                    .background(customPurple, shape = MaterialTheme.shapes.medium) // Rounded corners
-                    .border(0.dp, Color.Transparent) // Ensure no border
+                    .width(250.dp)
+                    .padding(vertical = 12.dp)
             ) {
                 Text("Camera", fontWeight = FontWeight.Bold, color = Color.White)
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Animal List Button
             Button(
                 onClick = { navController.navigate("animals/$userId") },
+                colors = ButtonDefaults.buttonColors(containerColor = customPurple),
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier
-                    .width(250.dp) // Increased button width
-                    .padding(vertical = 12.dp) // Vertical padding for spacing
-                    .background(customPurple, shape = MaterialTheme.shapes.medium) // Rounded corners
-                    .border(0.dp, Color.Transparent) // Ensure no border
+                    .width(250.dp)
+                    .padding(vertical = 12.dp)
             ) {
                 Text("Animal List", fontWeight = FontWeight.Bold, color = Color.White)
             }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
             // Files Button
             Button(
                 onClick = { navController.navigate("files") },
+                colors = ButtonDefaults.buttonColors(containerColor = customPurple),
+                shape = MaterialTheme.shapes.medium,
                 modifier = Modifier
-                    .width(250.dp) // Increased button width
-                    .padding(vertical = 12.dp) // Vertical padding for spacing
-                    .background(customPurple, shape = MaterialTheme.shapes.medium) // Rounded corners
-                    .border(0.dp, Color.Transparent) // Ensure no border
+                    .width(250.dp)
+                    .padding(vertical = 12.dp)
             ) {
                 Text("Files", fontWeight = FontWeight.Bold, color = Color.White)
             }
         }
     }
 }
+

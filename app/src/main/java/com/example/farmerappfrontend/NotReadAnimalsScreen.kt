@@ -1,3 +1,4 @@
+
 package com.example.farmerappfrontend
 
 import android.util.Log
@@ -11,11 +12,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotReadAnimalsScreen(
     token: String,
@@ -24,132 +27,125 @@ fun NotReadAnimalsScreen(
     onNavigateBack: () -> Unit,
     folderId: String? = null
 ) {
-    var isFileDialogOpen by remember { mutableStateOf(false) }
-    var folderName by remember { mutableStateOf("") }
+    var currentAnimalIds by remember { mutableStateOf(animalIds) }
+    var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
     var popupMessage by remember { mutableStateOf<String?>(null) }
-    val coroutineScope = rememberCoroutineScope()
+    val scope = rememberCoroutineScope()
 
-    fun createFileWithAnimals(folderName: String) {
-        coroutineScope.launch {
+    fun reloadAnimalList() {
+        scope.launch {
             try {
-                // Step 1: Create folder
-                val folderRequest = FolderRequest(name = folderName, ownerId = ownerId)
-                val folderResponse = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
-
-                if (folderResponse.isSuccessful) {
-                    val createdFolderId = folderResponse.body()?.id ?: return@launch
-
-                    // Log folder creation success
-                    Log.d("CreateFile", "Folder created: ID=$createdFolderId, Name=$folderName")
-
-                    // Step 2: Add animals to the folder
-                    if (animalIds.isNotEmpty()) {
-                        val addAnimalsResponse = RetrofitClient.apiService.addAnimalsToFolder(
-                            folderId = createdFolderId,
-                            animalIds = animalIds,
-                            authorization = "Bearer $token"
-                        )
-
-                        if (addAnimalsResponse.isSuccessful) {
-                            Log.d("AddAnimals", "Animals added successfully to folder ID=$createdFolderId")
-                            popupMessage = "File '$folderName' created and animals added successfully!"
-                        } else {
-                            Log.e("AddAnimals", "Failed to add animals: ${addAnimalsResponse.message()} (Code: ${addAnimalsResponse.code()})")
-                            popupMessage = "Failed to add animals: ${addAnimalsResponse.message()}"
-                        }
+                if (folderId != null) {
+                    val response = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
+                    if (response.isSuccessful) {
+                        currentAnimalIds = response.body()?.map { it.id } ?: emptyList()
                     } else {
-                        Log.e("AddAnimals", "No animals to add to folder.")
-                        popupMessage = "File created but no animals were added (empty list)."
+                        popupMessage = "Failed to reload animals: ${response.message()}"
                     }
                 } else {
-                    Log.e("CreateFile", "Failed to create file: ${folderResponse.message()} (Code: ${folderResponse.code()})")
-                    popupMessage = "Failed to create file: ${folderResponse.message()}"
+                    val response = RetrofitClient.apiService.getAnimalsByOwnerId(ownerId, "Bearer $token")
+                    if (response.isSuccessful) {
+                        currentAnimalIds = response.body()?.map { it.id } ?: emptyList()
+                    } else {
+                        popupMessage = "Failed to reload animals: ${response.message()}"
+                    }
                 }
             } catch (e: Exception) {
-                Log.e("CreateFile", "Error: ${e.message}")
-                popupMessage = "Error creating file: ${e.message}"
+                popupMessage = "Error reloading animals: ${e.message}"
             }
         }
     }
 
-
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp)
-    ) {
-        Text(
-            "Not Read Animals",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Animal List
-        LazyColumn(
-            contentPadding = PaddingValues(vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(animalIds) { id ->
-                Text(id, modifier = Modifier.padding(8.dp))
-            }
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Not Read Animals") },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(MaterialTheme.colorScheme.primary)
+            )
         }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Create File Button
-        Button(
-            onClick = { isFileDialogOpen = true },
-            modifier = Modifier.fillMaxWidth()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
         ) {
-            Text("Create File with Not Read Animals")
-        }
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Back Button
-        Button(
-            onClick = onNavigateBack, modifier = Modifier.fillMaxWidth()
-        ) {
-            Text("Back")
-        }
-    }
-
-    // Dialog for Folder Name Input
-    if (isFileDialogOpen) {
-        AlertDialog(
-            onDismissRequest = { isFileDialogOpen = false },
-            title = { Text("Create File") },
-            text = {
-                Column {
-                    Text("Enter file name:")
-                    Spacer(modifier = Modifier.height(8.dp))
-                    TextField(
-                        value = folderName,
-                        onValueChange = { folderName = it },
-                        modifier = Modifier.fillMaxWidth()
+            // Animal List (Scrollable)
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f), // Ensures the LazyColumn takes available space
+                contentPadding = PaddingValues(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(currentAnimalIds) { id ->
+                    AnimalRowWithSelection(
+                        animal = Animal(id, "unknown", ""),
+                        isSelected = selectedAnimals.contains(id),
+                        onToggleSelection = { animalId ->
+                            selectedAnimals = if (selectedAnimals.contains(animalId)) {
+                                selectedAnimals - animalId
+                            } else {
+                                selectedAnimals + animalId
+                            }
+                        }
                     )
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (folderName.isNotBlank()) {
-                            createFileWithAnimals(folderName)
-                            isFileDialogOpen = false
-                        }
+            }
+
+            // Bottom Buttons
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (selectedAnimals.isNotEmpty() && folderId != null) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                deleteSelectedAnimalsFromFolder(
+                                    folderId,
+                                    selectedAnimals.toList(),
+                                    token
+                                )
+                                popupMessage = "Animals removed from folder successfully."
+                                selectedAnimals = emptySet()
+                                reloadAnimalList()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Text("Remove from Folder", color = Color.White)
                     }
-                ) {
-                    Text("Create")
                 }
-            },
-            dismissButton = {
-                Button(onClick = { isFileDialogOpen = false }) {
-                    Text("Cancel")
+                if (selectedAnimals.isNotEmpty())
+
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                deleteAnimalsGlobally(selectedAnimals.toList(), token)
+                                popupMessage = "Animals deleted globally successfully."
+                                selectedAnimals = emptySet()
+                                reloadAnimalList()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("Delete Globally", color = Color.White)
+                    }
+
+
+                Button(
+                    onClick = onNavigateBack,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary)
+                ) {
+                    Text("Back", color = MaterialTheme.colorScheme.onSecondary)
                 }
             }
-        )
+        }
     }
 
     // Popup Message
@@ -167,6 +163,25 @@ fun NotReadAnimalsScreen(
     }
 }
 
+fun deleteSelectedAnimalsFromFolder(
+    folderId: String,
+    animalIds: List<String>,
+    token: String
+) {
+    CoroutineScope(Dispatchers.IO).launch {
+        try {
+            val response = RetrofitClient.apiService.removeAnimalsFromFolder(folderId, animalIds, "Bearer $token")
+            if (response.isSuccessful) {
+                Log.d("DeleteFolder", "Animals removed from folder")
+            } else {
+                Log.e("DeleteFolder", "Failed to remove animals: ${response.message()}")
+            }
+        } catch (e: Exception) {
+            Log.e("DeleteFolder", "Error removing animals from folder: ${e.message}")
+        }
+    }
+}
+
 suspend fun deleteAnimalsGlobally(animalIds: List<String>, token: String) {
     for (id in animalIds) {
         try {
@@ -181,24 +196,3 @@ suspend fun deleteAnimalsGlobally(animalIds: List<String>, token: String) {
         }
     }
 }
-
-fun deleteSelectedAnimalsFromFolder(
-    folderId: String,
-    animalIds: List<String>,
-    token: String,
-    onComplete: () -> Unit
-) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val response = RetrofitClient.apiService.removeAnimalsFromFolder(folderId, animalIds, "Bearer $token")
-            if (response.isSuccessful) {
-                onComplete()
-            } else {
-                Log.e("DeleteFolder", "Failed to remove animals from folder: ${response.message()}")
-            }
-        } catch (e: Exception) {
-            Log.e("DeleteFolder", "Error removing animals from folder: ${e.message}")
-        }
-    }
-}
-

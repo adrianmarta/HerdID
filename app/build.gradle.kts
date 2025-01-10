@@ -98,4 +98,6 @@ dependencies {
 
     // ML Kit for Text Recognition
     implementation("com.google.mlkit:text-recognition:16.0.0")
+    implementation ("androidx.compose.material:material-icons-extended:1.5.1")
+
 }

@@ -27,10 +27,7 @@ interface ApiService {
         @Path("ownerId") ownerId: String,
         @Header("Authorization") token: String
     ): Response<List<Animal>>
-    @GET("/list")
-    suspend fun getAnimalsByIds(
-        @retrofit2.http.Query("ids") ids: List<String>
-    ): Response<List<Animal>>
+
 
     @DELETE("/api/animals/{id}")
     suspend fun deleteAnimal(
@@ -60,11 +57,22 @@ interface ApiService {
         @Header("Authorization") token: String
 
     ): Response<Void>
+    @DELETE("/api/folders/{id}")
+    suspend fun deleteFolder(
+        @Path("id") folderId: String,
+        @Header("Authorization") token: String
+    ): Response<Void>
+
     @GET("/api/animals/exists/{id}")
     suspend fun checkAnimalExists(
         @Path("id") animalId: String,
         @Header("Authorization") token: String
     ): Response<Boolean>
+    @GET("/api/animals/list")
+    suspend fun getAnimalsByIds(
+        @Query("ids") ids: List<String>,
+        @Header("Authorization") token: String
+    ): Response<List<Animal>>
 
     @PUT("/api/folders/{folderId}/remove-animals")
     suspend fun removeAnimalsFromFolder(
@@ -78,4 +86,9 @@ interface ApiService {
         @Body animalIds: List<String>,
         @Header("Authorization") authorization: String
     ): Response<Unit>
+    @GET("api/animals/{id}")
+    suspend fun getAnimalDetails(
+        @Path("id") animalId:String,
+        @Header("Authorization") token: String
+    ): Response<Animal>
 }

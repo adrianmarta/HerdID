@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -18,8 +19,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnimalListScreenByFolder(token: String, folderId: String, navController: NavController) {
+fun AnimalListScreenByFolder(token: String, folderId: String, navController: NavController,ownerId:String) {
     var animals by remember { mutableStateOf<List<Animal>>(emptyList()) }
     var filteredAnimals by remember { mutableStateOf<List<Animal>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -49,79 +51,64 @@ fun AnimalListScreenByFolder(token: String, folderId: String, navController: Nav
         }
     }
 
-    if (isCounting) {
-        CountingCamera(
-            token = token,
-            animalIds = animals.map { it.id },
-            onComplete = { idsNotRead ->
-                isCounting = false
-                navController.navigate("notReadAnimals/$token/${idsNotRead.joinToString(",")}/$folderId?folderId=$folderId")
-            }
-        )
-    }
-    else if (isCameraOpen) {
-        CameraIDReader(
-            onIDDetected = { scannedId ->
-                if (scannedId != null) {
-                    scope.launch {
-                        handleScannedId(
-                            token = token,
-                            folderId = folderId,
-                            scannedId = scannedId,
-                            currentAnimals = animals,
-                            onResult = { result ->
-                                popupMessage = result
-                            }
-                        )
-
-                        fetchAnimalsInFolder(folderId, token) { updatedAnimals ->
-                            animals = updatedAnimals
-                            filteredAnimals = updatedAnimals
-                        }
-                    }
-                }
-            },
-            onError = { error ->
-                popupMessage = "Error: $error"
-            },
-            modifier = Modifier.fillMaxSize()
-        )
-    } else {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Animals in Folder") },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(MaterialTheme.colorScheme.primary)
+            )
+        }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(16.dp)
+                .padding(innerPadding)
         ) {
+            Spacer(modifier = Modifier.height(8.dp))
+
             // Search Bar
             TextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                label = { Text("Search Animals") },
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                label = { Text("Search animals...") },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = MaterialTheme.shapes.medium,
+                leadingIcon = {
+                    Icon(imageVector = Icons.Default.Check, contentDescription = "Search")
+                }
             )
 
-            // Title
-            Text(
-                "Animals in Folder",
-                style = MaterialTheme.typography.headlineLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Spacer(modifier = Modifier.height(8.dp))
 
-            // Count Button
-            Button(
-                onClick = { isCounting = true },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+            // Action Buttons
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text("Count Animals")
+                Button(
+                    onClick = { isCounting = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Count")
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Button(
+                    onClick = { isCameraOpen = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Add via Camera")
+                }
             }
 
-            // Add Using Camera Button
-            Button(
-                onClick = { isCameraOpen = true },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-            ) {
-                Text("Add Animal using Camera")
-            }
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Delete Button
             if (selectedAnimals.isNotEmpty()) {
@@ -141,10 +128,15 @@ fun AnimalListScreenByFolder(token: String, folderId: String, navController: Nav
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp)
                 ) {
-                    Text("Delete Selected Animals")
+                    Text("Delete Selected")
                 }
+
+                Spacer(modifier = Modifier.height(8.dp))
             }
 
             // Animal List
@@ -157,10 +149,13 @@ fun AnimalListScreenByFolder(token: String, folderId: String, navController: Nav
                 }
             } else {
                 LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f), // Ensure it takes the available space
                     contentPadding = PaddingValues(vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    items(filteredAnimals) { animal ->
+                    items(filteredAnimals.filterNotNull()) { animal ->
                         AnimalRowWithSelection(
                             animal = animal,
                             isSelected = selectedAnimals.contains(animal.id),
@@ -191,8 +186,49 @@ fun AnimalListScreenByFolder(token: String, folderId: String, navController: Nav
             }
         )
     }
-}
 
+    // Counting Camera
+    if (isCounting) {
+        CountingCamera(
+            token = token,
+            animalIds = animals.map { it.id },
+            onComplete = { idsNotRead ->
+                isCounting = false
+                navController.navigate("notReadAnimals/$token/${idsNotRead.joinToString(",")}/$ownerId?folderId=$folderId")
+            }
+        )
+    }
+
+    // Camera ID Reader
+    if (isCameraOpen) {
+        CameraIDReader(
+            onIDDetected = { scannedId ->
+                if (scannedId != null) {
+                    scope.launch {
+                        handleScannedId(
+                            token = token,
+                            folderId = folderId,
+                            scannedId = scannedId,
+                            currentAnimals = animals,
+                            onResult = { result ->
+                                popupMessage = result
+                            }
+                        )
+
+                        fetchAnimalsInFolder(folderId, token) { updatedAnimals ->
+                            animals = updatedAnimals
+                            filteredAnimals = updatedAnimals
+                        }
+                    }
+                }
+            },
+            onError = { error ->
+                popupMessage = "Error: $error"
+            },
+            modifier = Modifier.fillMaxSize()
+        )
+    }
+}
 
 @Composable
 fun AnimalRowWithSelection(
@@ -200,41 +236,46 @@ fun AnimalRowWithSelection(
     isSelected: Boolean,
     onToggleSelection: (String) -> Unit
 ) {
-    Row(
+    Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(8.dp)
+            .padding(horizontal = 16.dp)
             .clickable { onToggleSelection(animal.id) },
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+        colors = if (isSelected) {
+            CardDefaults.cardColors(containerColor = Color(0xFF90CAF9)) // Highlight selected
+        } else {
+            CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+        }
     ) {
-        val genderSymbol = if (animal.gender.equals("male", ignoreCase = true)) "♂" else "♀"
-        Text(
-            text = "${animal.id}   $genderSymbol   ${animal.birthDate}",
-            style = MaterialTheme.typography.bodyLarge
-        )
-        if (isSelected) {
-            Icon(imageVector = Icons.Default.Check, contentDescription = "Selected")
+        Row(
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val genderSymbol = if (animal.gender.equals("male", ignoreCase = true)) "♂" else "♀"
+            Text(
+                text = "${animal.id}   $genderSymbol   ${animal.birthDate}",
+                style = MaterialTheme.typography.bodyLarge
+            )
+            if (isSelected) {
+                Icon(imageVector = Icons.Default.Check, contentDescription = "Selected")
+            }
         }
     }
 }
 
-
-// Function to delete selected animals from a folder
-fun deleteSelectedAnimalsFromFolders(
-    folderId: String,
-    animalIds: List<String>,
-    token: String,
-    onComplete: () -> Unit
-) {
+fun fetchAnimalsInFolder(folderId: String, token: String, onResult: (List<Animal>) -> Unit) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
-            val response = RetrofitClient.apiService.removeAnimalsFromFolder(folderId, animalIds, "Bearer $token")
+            val response = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
             if (response.isSuccessful) {
-                onComplete()
+                onResult(response.body()?.filterNotNull() ?: emptyList())
+            } else {
+                onResult(emptyList()) // Handle failure gracefully
             }
         } catch (e: Exception) {
-            Log.e("Delete", "Error deleting animals from folder: ${e.message}")
+            onResult(emptyList()) // Handle exception gracefully
         }
     }
 }
@@ -273,21 +314,23 @@ suspend fun handleScannedId(
         onResult("Error: ${e.message}")
     }
 }
-
-fun fetchAnimalsInFolder(folderId: String, token: String, onResult: (List<Animal>) -> Unit) {
+fun deleteSelectedAnimalsFromFolders(
+    folderId: String,
+    animalIds: List<String>,
+    token: String,
+    onComplete: () -> Unit
+) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
-            val response = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
+            val response = RetrofitClient.apiService.removeAnimalsFromFolder(folderId, animalIds, "Bearer $token")
             if (response.isSuccessful) {
-                onResult(response.body() ?: emptyList())
+                Log.d("DeleteAnimals", "Animals successfully removed from folder: $folderId")
+                onComplete() // Notify the caller on success
             } else {
-                onResult(emptyList()) // Handle failure gracefully
+                Log.e("DeleteAnimals", "Failed to remove animals: ${response.message()}")
             }
         } catch (e: Exception) {
-            onResult(emptyList()) // Handle exception gracefully
+            Log.e("DeleteAnimals", "Error removing animals from folder: ${e.message}")
         }
     }
 }
-
-
-
