@@ -1,3 +1,6 @@
+
+
+
 package com.example.farmerappfrontend
 
 import android.util.Log
@@ -8,7 +11,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -76,7 +78,7 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Action Buttons (Select All and Delete)
+            // Action Buttons (Select All and Deces)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -85,7 +87,7 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
             ) {
                 Button(
                     onClick = { selectedAnimals = filteredAnimals.map { it.id }.toSet() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF66BB6A)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF66BB6A)), // Green
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Select All")
@@ -97,6 +99,7 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                     onClick = {
                         scope.launch {
                             deleteSelectedAnimals(selectedAnimals, token)
+                            // Reload animals after deletion
                             loadAnimals(token, userId) { result ->
                                 animals = result
                                 filteredAnimals = result
@@ -104,7 +107,7 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                             }
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350)), // Red
                     modifier = Modifier.weight(1f)
                 ) {
                     Text("Delete")
@@ -113,11 +116,11 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Animal List
+            // Animal List (Scrollable)
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f),
+                    .weight(1f), // Makes LazyColumn fill available space
                 contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -140,7 +143,7 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             val genderSymbol = if (animal.gender.equals("male", ignoreCase = true)) "♂" else "♀"
-                            Column(modifier = Modifier.weight(1f)) {
+                            Column {
                                 Text("${animal.id} $genderSymbol", style = MaterialTheme.typography.bodyLarge)
                                 Text(
                                     text = "Born: ${animal.birthDate}",
@@ -148,27 +151,20 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Row {
-                                if (selectedAnimals.contains(animal.id)) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                IconButton(onClick = { navController.navigate("animalDetails/${animal.id}") }) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = "Details"
-                                    )
-                                }
+                            if (selectedAnimals.contains(animal.id)) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // Bottom Buttons
+            // Bottom Buttons (Fixed)
+            // Bottom Buttons (Side by Side)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -183,7 +179,7 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                     Text("Count")
                 }
 
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(8.dp)) // Space between the buttons
 
                 Button(
                     onClick = { navController.navigate("camera/$token") },
@@ -193,6 +189,7 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                     Text("Open Camera")
                 }
             }
+
         }
     }
 

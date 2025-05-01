@@ -3,35 +3,17 @@ package com.example.farmerappfrontend
 // Models.kt
 
 
-data class LoginRequest(val id: String, val email: String, val password:String)
+data class LoginRequest(val id: String, val cnp: String)
 
 data class LoginResponse(val token: String)
 
 data class UserProfile(val id: String, val name: String, val dob: String, val address: String,val phoneNumber:String)
+
 data class Animal(val id: String, val gender: String, val birthDate: String)
-data class AnimalDetails(val id: String, val gender: String, val birthDate: String,val species:String,val producesMilk:Boolean)
 data class FolderRequest(
     val name: String,    // Folder name
     val ownerId: String  // Owner ID
 )
-data class AnimalEvent(
-    val id: String,
-    val animalId: String,
-    val eventType: String,
-    val eventDate: String,
-    val details: Map<String, Any>
-)
-
-data class RegisterRequest(
-    val id: String,
-    val email: String,
-    val password: String,
-    val name: String,
-    val dob: String,
-    val address: String,
-    val phoneNumber: String
-)
-
 data class Folder(
     val id: String,
     val name: String,

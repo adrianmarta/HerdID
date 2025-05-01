@@ -18,6 +18,7 @@ interface ApiService {
 
     @POST("/api/auth/login")
     suspend fun login(@Body loginRequest: LoginRequest): LoginResponse
+
     @GET("/api/users/profile")
     suspend fun getUserProfile(@Header("Authorization") token: String): UserProfile
     // ApiService.kt
@@ -94,27 +95,7 @@ interface ApiService {
     ): Response<Unit>
     @GET("api/animals/{id}")
     suspend fun getAnimalDetails(
-        @Path("id") animalId: String,
-        @Header("Authorization") token: String
-    ): Response<AnimalDetails>
-    @GET("api/animals/{id}")
-    suspend fun getAnimal(
-        @Path("id") animalId: String,
+        @Path("id") animalId:String,
         @Header("Authorization") token: String
     ): Response<Animal>
-    @POST("api/events")
-    suspend fun postEvent(
-        @Query("animalId") animalId: String,
-        @Header("Authorization") token: String,
-        @Body event: Map<String, @JvmSuppressWildcards Any>
-    ): Response<Void>
-    @GET("api/events/animal/{animalId}")
-    suspend fun getEventsForAnimal(
-        @Path("animalId") animalId: String,
-        @Header("Authorization") token: String
-    ): Response<List<AnimalEvent>>
-
-    @POST("/api/auth/register")
-    suspend fun register(@Body registerRequest: RegisterRequest): Response<Void>
-
 }

@@ -72,32 +72,13 @@ fun MyApp() {
             startDestination = if (isValidUser) "home/$token" else "login"
         ) {
             composable("login") {
-                LoginScreen(
-                    onLoginSuccess = { token ->
-                        TokenManager.saveToken(context, token)
-                        navController.navigate("home/$token") {
-                            popUpTo("login") { inclusive = true }
-                        }
-                    },
-                    navToRegister = {
-                        navController.navigate("register")
+                LoginScreen(onLoginSuccess = { newToken ->
+                    TokenManager.saveToken(context, newToken)
+                    navController.navigate("home/$newToken") {
+                        popUpTo("login") { inclusive = true }
                     }
-                )
+                })
             }
-
-            composable("register") {
-                RegisterScreen(
-                    onRegisterSuccess = {
-                        navController.navigate("login") {
-                            popUpTo("register") { inclusive = true }
-                        }
-                    },
-                    navToLogin = {
-                        navController.navigate("login")
-                    }
-                )
-            }
-
             composable("home/{token}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
                 var userId by remember { mutableStateOf<String?>(null) }
@@ -160,11 +141,6 @@ fun MyApp() {
                         navController = navController // Here, the folder name acts as an identifier for animals in the folder
                     )
                 }
-            }
-            composable("animalDetails/{animalId}") { backStackEntry ->
-                val animalId = backStackEntry.arguments?.getString("animalId") ?: ""
-                val token = backStackEntry.arguments?.getString("token") ?: ""
-                AnimalDetailsScreen(animalId = animalId, token = token, navController = navController)
             }
             composable("folder/{folderId}/animals") { backStackEntry ->
                 val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
@@ -235,8 +211,7 @@ fun MyApp() {
                     animalIds = notReadIds,
                     ownerId = ownerId,
                     onNavigateBack = { navController.popBackStack() },
-                    folderId = folderId, // Pass folderId to NotReadAnimalsScreen
-                    navController = navController
+                    folderId = folderId // Pass folderId to NotReadAnimalsScreen
                 )
             }
 

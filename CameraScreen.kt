@@ -146,7 +146,7 @@ suspend fun fetchAnimalDetails(
     animalId: String
 ): Animal? {
     return try {
-        val response = RetrofitClient.apiService.getAnimal(animalId, "Bearer $token")
+        val response = RetrofitClient.apiService.getAnimalDetails(animalId, "Bearer $token")
         if (response.isSuccessful) {
             response.body()
         } else {

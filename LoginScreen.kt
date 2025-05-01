@@ -8,7 +8,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 
@@ -16,13 +15,9 @@ import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LoginScreen(
-    onLoginSuccess: (String) -> Unit,
-    navToRegister: () -> Unit
-) {
+fun LoginScreen(onLoginSuccess: (String) -> Unit) {
     var id by remember { mutableStateOf("") }
-    var email by remember { mutableStateOf("") }
-    var password by remember { mutableStateOf("") }
+    var cnp by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
 
@@ -35,6 +30,7 @@ fun LoginScreen(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
+        // Title
         Text(
             text = "Login",
             style = MaterialTheme.typography.headlineLarge,
@@ -62,35 +58,15 @@ fun LoginScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Email Input
+        // CNP Input
         OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email") },
+            value = cnp,
+            onValueChange = { cnp = it },
+            label = { Text("CNP") },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp),
             singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = MaterialTheme.colorScheme.background,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = Color.Gray
-            )
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Password Input
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
             textStyle = MaterialTheme.typography.bodyLarge,
             colors = TextFieldDefaults.outlinedTextFieldColors(
                 containerColor = MaterialTheme.colorScheme.background,
@@ -108,9 +84,10 @@ fun LoginScreen(
                 errorMessage = ""
                 scope.launch {
                     try {
-                        val loginRequest = LoginRequest(id, email, password)
+                        val loginRequest = LoginRequest(id, cnp)
                         val response = RetrofitClient.apiService.login(loginRequest)
-                        onLoginSuccess(response.token)
+
+                        onLoginSuccess(response.token) // Pass token to home screen
                     } catch (e: Exception) {
                         errorMessage = "Login failed: ${e.message}"
                     } finally {
@@ -122,7 +99,7 @@ fun LoginScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 8.dp)
-                .height(56.dp),
+                .height(56.dp), // Larger button
             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
         ) {
             Text("Login", color = Color.White, style = MaterialTheme.typography.bodyLarge)
@@ -130,11 +107,7 @@ fun LoginScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TextButton(onClick = navToRegister) {
-            Text("Don't have an account? Register")
-        }
-
-        // Loading / Error
+        // Loading Indicator or Error Message
         if (isLoading) {
             CircularProgressIndicator(
                 modifier = Modifier.padding(16.dp),
@@ -156,9 +129,5 @@ fun LoginScreen(
 @Preview(showBackground = true)
 @Composable
 fun PreviewLoginScreen() {
-    LoginScreen(
-        onLoginSuccess = {},
-        navToRegister = {}
-    )
+    LoginScreen(onLoginSuccess = { token -> })
 }
-

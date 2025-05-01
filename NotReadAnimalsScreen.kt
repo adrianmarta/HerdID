@@ -1,3 +1,4 @@
+
 package com.example.farmerappfrontend
 
 import android.util.Log
@@ -16,7 +17,6 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import androidx.navigation.NavController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -25,8 +25,7 @@ fun NotReadAnimalsScreen(
     animalIds: List<String>,
     ownerId: String,
     onNavigateBack: () -> Unit,
-    folderId: String? = null,
-    navController: NavController
+    folderId: String? = null
 ) {
     var currentAnimalIds by remember { mutableStateOf(animalIds) }
     var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -88,8 +87,7 @@ fun NotReadAnimalsScreen(
                             } else {
                                 selectedAnimals + animalId
                             }
-                        },
-                        onDetailsClick = { navController.navigate("animalDetails/$id") }
+                        }
                     )
                 }
             }
