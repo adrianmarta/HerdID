@@ -1,4 +1,3 @@
-
 package com.example.farmerappfrontend
 
 import android.util.Log
@@ -78,17 +77,35 @@ fun NotReadAnimalsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(currentAnimalIds) { id ->
-                    AnimalRowWithSelection(
-                        animal = Animal(id, "unknown", ""),
-                        isSelected = selectedAnimals.contains(id),
-                        onToggleSelection = { animalId ->
-                            selectedAnimals = if (selectedAnimals.contains(animalId)) {
-                                selectedAnimals - animalId
-                            } else {
-                                selectedAnimals + animalId
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedAnimals = if (selectedAnimals.contains(id)) {
+                                    selectedAnimals - id
+                                } else {
+                                    selectedAnimals + id
+                                }
+                            },
+                        elevation = CardDefaults.elevatedCardElevation()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(id, style = MaterialTheme.typography.bodyLarge)
+                            }
+                            if (selectedAnimals.contains(id)) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
                             }
                         }
-                    )
+                    }
                 }
             }
 

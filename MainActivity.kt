@@ -127,7 +127,10 @@ fun MyApp() {
 
             composable("camera/{token}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
-                CameraScreen(token = token) // Pass the token here
+                CameraScreen(
+                    token = token,
+                    navController = navController
+                )
             }
             composable("files") {
                 FilesScreen(navController)

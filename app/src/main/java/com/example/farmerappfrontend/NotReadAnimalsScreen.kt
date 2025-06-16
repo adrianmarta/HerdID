@@ -13,20 +13,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import androidx.navigation.NavController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NotReadAnimalsScreen(
     token: String,
     animalIds: List<String>,
-    ownerId: String,
+
     onNavigateBack: () -> Unit,
-    folderId: String? = null,
-    navController: NavController
+    folderId: String? = null
+
 ) {
     var currentAnimalIds by remember { mutableStateOf(animalIds) }
     var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
@@ -44,7 +44,7 @@ fun NotReadAnimalsScreen(
                         popupMessage = "Failed to reload animals: ${response.message()}"
                     }
                 } else {
-                    val response = RetrofitClient.apiService.getAnimalsByOwnerId(ownerId, "Bearer $token")
+                    val response = RetrofitClient.apiService.getAnimalsByOwnerId("Bearer $token")
                     if (response.isSuccessful) {
                         currentAnimalIds = response.body()?.map { it.id } ?: emptyList()
                     } else {
@@ -79,18 +79,35 @@ fun NotReadAnimalsScreen(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(currentAnimalIds) { id ->
-                    AnimalRowWithSelection(
-                        animal = Animal(id, "unknown", ""),
-                        isSelected = selectedAnimals.contains(id),
-                        onToggleSelection = { animalId ->
-                            selectedAnimals = if (selectedAnimals.contains(animalId)) {
-                                selectedAnimals - animalId
-                            } else {
-                                selectedAnimals + animalId
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedAnimals = if (selectedAnimals.contains(id)) {
+                                    selectedAnimals - id
+                                } else {
+                                    selectedAnimals + id
+                                }
+                            },
+                        elevation = CardDefaults.elevatedCardElevation()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text(id, style = MaterialTheme.typography.bodyLarge)
                             }
-                        },
-                        onDetailsClick = { navController.navigate("animalDetails/$id") }
-                    )
+                            if (selectedAnimals.contains(id)) {
+                                Icon(
+                                    imageVector = Icons.Default.Check,
+                                    contentDescription = "Selected",
+                                    tint = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+                    }
                 }
             }
 

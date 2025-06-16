@@ -1,6 +1,3 @@
-
-
-
 package com.example.farmerappfrontend
 
 import android.util.Log
@@ -182,11 +179,11 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                 Spacer(modifier = Modifier.width(8.dp)) // Space between the buttons
 
                 Button(
-                    onClick = { navController.navigate("camera/$token") },
+                    onClick = { navController.navigate("fileUpload/$token") },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Open Camera")
+                    Text("Upload Animal")
                 }
             }
 

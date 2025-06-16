@@ -9,6 +9,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CreateNewFolder
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -19,38 +24,142 @@ import androidx.compose.ui.graphics.Color
 import androidx.navigation.NavController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import android.content.Context
+import android.os.Environment
+import androidx.compose.ui.platform.LocalContext
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
+import com.tom_roush.pdfbox.pdmodel.PDDocument
+import com.tom_roush.pdfbox.pdmodel.PDPage
+import com.tom_roush.pdfbox.pdmodel.PDPageContentStream
+import com.tom_roush.pdfbox.pdmodel.font.PDType1Font
+import com.tom_roush.pdfbox.pdmodel.font.PDType0Font
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+import java.text.SimpleDateFormat
+import java.util.*
+import com.tom_roush.pdfbox.util.Matrix
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import android.content.pm.PackageManager
+import android.net.Uri
+import java.io.OutputStream
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnimalListScreen(token: String, userId: String, navController: NavController) {
+fun AnimalListScreen(token: String,  navController: NavController) {
     val scope = rememberCoroutineScope()
     var animals by remember { mutableStateOf<List<Animal>>(emptyList()) }
     var filteredAnimals by remember { mutableStateOf<List<Animal>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isCounting by remember { mutableStateOf(false) }
+    var sortOrder by remember { mutableStateOf<SortOrder>(SortOrder.NONE) }
+    var isExporting by remember { mutableStateOf(false) }
+    var exportMessage by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    
+    // Folder dialog states
+    var showFolderDialog by remember { mutableStateOf(false) }
+    var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
+    var showCreateFolderDialog by remember { mutableStateOf(false) }
+    var newFolderName by remember { mutableStateOf("") }
+    var selectedFolderId by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    // Activity result launcher for creating a PDF file using SAF
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        uri?.let {
+            scope.launch {
+                isExporting = true
+                try {
+                    PDFBoxResourceLoader.init(context)
+                    val selectedAnimalDetails = animals.filter { it.id in selectedAnimals }
+                    context.contentResolver.openOutputStream(it)?.use { outputStream ->
+                        generateAnimalPDF(outputStream, selectedAnimalDetails)
+                    }
+                    exportMessage = "PDF exported successfully!"
+                } catch (e: Exception) {
+                    exportMessage = "Error exporting PDF: ${e.message}"
+                } finally {
+                    isExporting = false
+                }
+            }
+        } ?: run {
+            exportMessage = "PDF export cancelled."
+        }
+    }
 
     // Fetch animals on component load
     LaunchedEffect(Unit) {
-        loadAnimals(token, userId) { result ->
+        loadAnimals(token) { result ->
             animals = result
             filteredAnimals = result
         }
     }
 
-    // Filter animals when the search query changes
-    LaunchedEffect(searchQuery) {
+    LaunchedEffect(navController.currentBackStackEntry) {
+        val currentEntry = navController.currentBackStackEntry
+        currentEntry?.savedStateHandle?.getLiveData<Boolean>("refresh")?.observeForever {
+            if (it == true) {
+                loadAnimals(token) { result ->
+                    animals = result
+                    filteredAnimals = result
+                }
+                currentEntry.savedStateHandle.set("refresh", false)
+            }
+        }
+    }
+
+    LaunchedEffect(searchQuery, sortOrder) {
         filteredAnimals = if (searchQuery.isEmpty()) {
             animals
         } else {
-            animals.filter { it.id.contains(searchQuery, ignoreCase = true) || it.birthDate.contains(searchQuery, ignoreCase = true) }
+            animals.filter {
+                it.id.contains(searchQuery, ignoreCase = true) ||
+                        it.birthDate.contains(searchQuery, ignoreCase = true)
+            }
+        }
+        filteredAnimals = when (sortOrder) {
+            SortOrder.BIRTHDATE_ASC -> filteredAnimals.sortedBy { it.birthDate }
+            SortOrder.BIRTHDATE_DESC -> filteredAnimals.sortedByDescending { it.birthDate }
+            SortOrder.ID_ASC -> filteredAnimals.sortedBy { it.id }
+            SortOrder.ID_DESC -> filteredAnimals.sortedByDescending { it.id }
+            SortOrder.NONE -> filteredAnimals
+        }
+    }
+
+    LaunchedEffect(showFolderDialog) {
+        if (showFolderDialog) {
+            try {
+                val response = RetrofitClient.apiService.getFolders("Bearer $token")
+                if (response.isSuccessful) {
+                    folders = response.body() ?: emptyList()
+                } else {
+                    errorMessage = "Failed to load folders"
+                }
+            } catch (e: Exception) {
+                errorMessage = "Error loading folders: ${e.message}"
+            }
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("HerdID") },
+                title = { Text("Animals (${filteredAnimals.size})") },
+                actions = {
+                    IconButton(onClick = {
+                        navController.navigate("camera/$token/${animals.map{it.id}.joinToString(",")}")
+                    }) {
+                        Icon(Icons.Default.CameraAlt, contentDescription = "Open Camera")
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(MaterialTheme.colorScheme.primary)
             )
         }
@@ -60,60 +169,113 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Search Bar
-            TextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                label = { Text("Search animals...") },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                leadingIcon = {
-                    Icon(imageVector = Icons.Default.CheckCircle, contentDescription = "Search")
-                },
-                shape = MaterialTheme.shapes.medium
-            )
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            // Action Buttons (Select All and Delete)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Button(
-                    onClick = { selectedAnimals = filteredAnimals.map { it.id }.toSet() },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF66BB6A)),
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text("Select All")
+                TextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    label = { Text("Search animals...") },
+                    leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = "Search") },
+                    modifier = Modifier.weight(1f),
+                    shape = MaterialTheme.shapes.medium
+                )
+
+                var expanded by remember { mutableStateOf(false) }
+                IconButton(onClick = { expanded = true }) {
+                    Icon(Icons.Default.MoreVert, contentDescription = "Sort")
                 }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Button(
-                    onClick = {
-                        scope.launch {
-                            deleteSelectedAnimals(selectedAnimals, token)
-                            loadAnimals(token, userId) { result ->
-                                animals = result
-                                filteredAnimals = result
-                                selectedAnimals = emptySet()
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF5350)),
-                    modifier = Modifier.weight(1f)
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
                 ) {
-                    Text("Delete")
+                    DropdownMenuItem(
+                        text = { Text("Sort by Birthdate (Oldest First)") },
+                        onClick = {
+                            sortOrder = SortOrder.BIRTHDATE_ASC
+                            expanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sort by Birthdate (Newest First)") },
+                        onClick = {
+                            sortOrder = SortOrder.BIRTHDATE_DESC
+                            expanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sort by ID (Ascending)") },
+                        onClick = {
+                            sortOrder = SortOrder.ID_ASC
+                            expanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Sort by ID (Descending)") },
+                        onClick = {
+                            sortOrder = SortOrder.ID_DESC
+                            expanded = false
+                        }
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Animal List
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Checkbox(
+                        checked = selectedAnimals.size == filteredAnimals.size && filteredAnimals.isNotEmpty(),
+                        onCheckedChange = { checked ->
+                            selectedAnimals = if (checked) {
+                                filteredAnimals.map { it.id }.toSet()
+                            } else {
+                                emptySet()
+                            }
+                        })
+                    Text(
+                        text = "Select All",
+                        modifier = Modifier.clickable {
+                            selectedAnimals = if (selectedAnimals.size == filteredAnimals.size) {
+                                emptySet()
+                            } else {
+                                filteredAnimals.map { it.id }.toSet()
+                            }
+                        }
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                Button(
+                    onClick = { showFolderDialog = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Folder,
+                        contentDescription = "Add to Folder",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Add to Folder")
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -132,14 +294,21 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                                     selectedAnimals + animal.id
                                 }
                             },
-                        elevation = CardDefaults.elevatedCardElevation()
+                        elevation = CardDefaults.elevatedCardElevation(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selectedAnimals.contains(animal.id)) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.surface
+                            }
+                        )
                     ) {
                         Row(
                             modifier = Modifier.padding(16.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            val genderSymbol = if (animal.gender.equals("male", ignoreCase = true)) "♂" else "♀"
+                            val genderSymbol = if (animal.gender.equals("m", ignoreCase = true)) "♂" else "♀"
                             Column(modifier = Modifier.weight(1f)) {
                                 Text("${animal.id} $genderSymbol", style = MaterialTheme.typography.bodyLarge)
                                 Text(
@@ -148,27 +317,23 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Row {
-                                if (selectedAnimals.contains(animal.id)) {
-                                    Icon(
-                                        imageVector = Icons.Default.Check,
-                                        contentDescription = "Selected",
-                                        tint = MaterialTheme.colorScheme.primary
-                                    )
-                                }
-                                IconButton(onClick = { navController.navigate("animalDetails/${animal.id}") }) {
-                                    Icon(
-                                        imageVector = Icons.Default.MoreVert,
-                                        contentDescription = "Details"
-                                    )
-                                }
+                            IconButton(onClick = {
+                                navController.previousBackStackEntry
+                                    ?.savedStateHandle
+                                    ?.set("refresh", true)
+                                navController.navigate("animalDetails/${animal.id}")
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Details"
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // Bottom Buttons
+            // Bottom Buttons (Side by Side)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -176,62 +341,248 @@ fun AnimalListScreen(token: String, userId: String, navController: NavController
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Button(
-                    onClick = { isCounting = true },
+                    onClick = {
+                        if (selectedAnimals.isEmpty()) {
+                            exportMessage = "Please select animals to export"
+                            return@Button
+                        }
+                        val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                        val filename = "animal_list_$timestamp.pdf"
+                        createDocumentLauncher.launch(filename)
+                    },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.weight(1f),
+                    enabled = !isExporting
                 ) {
-                    Text("Count")
+                    Icon(
+                        imageVector = Icons.Default.PictureAsPdf,
+                        contentDescription = "Export to PDF",
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isExporting) "Exporting..." else "Export to PDF")
                 }
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Button(
-                    onClick = { navController.navigate("camera/$token") },
+                    onClick = { navController.navigate("fileUpload/$token") },
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Open Camera")
+                    Text("Add Animals")
                 }
             }
         }
     }
 
-    // Show Counting Camera
-    if (isCounting) {
-        CountingCamera(
-            token = token,
-            animalIds = animals.map { it.id },
-            onComplete = { idsNotRead ->
-                isCounting = false
-                navController.navigate("notReadAnimals/$token/${idsNotRead.joinToString(",")}/$userId")
+    // Folder Selection Dialog
+    if (showFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showFolderDialog = false
+                selectedFolderId = null
+                errorMessage = null
+            },
+            title = { Text("Select Folder") },
+            text = {
+                Column {
+                    if (isLoading) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.align(Alignment.CenterHorizontally)
+                        )
+                    } else {
+                        if (errorMessage != null) {
+                            Text(
+                                text = errorMessage!!,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+                        
+                        Button(
+                            onClick = { showCreateFolderDialog = true },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.CreateNewFolder,
+                                contentDescription = "Create New Folder"
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Create New Folder")
+                        }
+
+                        LazyColumn {
+                            items(folders) { folder ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(vertical = 4.dp)
+                                        .clickable {
+                                            selectedFolderId = if (selectedFolderId == folder.id) null else folder.id
+                                        },
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = if (selectedFolderId == folder.id) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.surface
+                                        }
+                                    )
+                                ) {
+                                    Text(
+                                        text = folder.name,
+                                        modifier = Modifier.padding(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { showFolderDialog = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            selectedFolderId?.let { folderId ->
+                                scope.launch {
+                                    try {
+                                        isLoading = true
+                                        val response = RetrofitClient.apiService.addAnimalsToFolder(
+                                            folderId = folderId,
+                                            animalIds = selectedAnimals.toList(),
+                                            authorization = "Bearer $token"
+                                        )
+                                        if (response.isSuccessful) {
+                                            showFolderDialog = false
+                                            selectedFolderId = null
+                                            selectedAnimals = emptySet()
+                                        } else {
+                                            errorMessage = "Failed to add animals to folder"
+                                        }
+                                    } catch (e: Exception) {
+                                        errorMessage = "Error: ${e.message}"
+                                    } finally {
+                                        isLoading = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = selectedFolderId != null && selectedAnimals.isNotEmpty()
+                    ) {
+                        Text("Add to Folder")
+                    }
+                }
             }
         )
     }
-}
 
-// Function to Delete Selected Animals
-fun deleteSelectedAnimals(selectedAnimals: Set<String>, token: String) {
-    CoroutineScope(Dispatchers.IO).launch {
-        selectedAnimals.forEach { animalId ->
-            try {
-                val response = RetrofitClient.apiService.deleteAnimal(animalId, "Bearer $token")
-                if (response.isSuccessful) {
-                    Log.d("Delete", "Animal $animalId deleted successfully.")
-                } else {
-                    Log.e("Delete", "Failed to delete animal $animalId: ${response.message()}")
+    // Create New Folder Dialog
+    if (showCreateFolderDialog) {
+        AlertDialog(
+            onDismissRequest = { 
+                showCreateFolderDialog = false
+                newFolderName = ""
+                errorMessage = null
+            },
+            title = { Text("Create New Folder") },
+            text = {
+                Column {
+                    if (errorMessage != null) {
+                        Text(
+                            text = errorMessage!!,
+                            color = MaterialTheme.colorScheme.error,
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                    OutlinedTextField(
+                        value = newFolderName,
+                        onValueChange = { newFolderName = it },
+                        label = { Text("Folder Name") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
                 }
-            } catch (e: Exception) {
-                Log.e("Delete", "Error deleting animal $animalId: ${e.message}")
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(
+                        onClick = { showCreateFolderDialog = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            if (newFolderName.isNotBlank()) {
+                                scope.launch {
+                                    try {
+                                        isLoading = true
+                                        val response = RetrofitClient.apiService.createFolder(
+                                            token = "Bearer $token",
+                                            folderRequest = FolderRequest(
+                                                name = newFolderName
+                                            )
+                                        )
+                                        if (response.isSuccessful) {
+                                            val foldersResponse = RetrofitClient.apiService.getFolders("Bearer $token")
+                                            if (foldersResponse.isSuccessful) {
+                                                folders = foldersResponse.body() ?: emptyList()
+                                            }
+                                            showCreateFolderDialog = false
+                                            newFolderName = ""
+                                        } else {
+                                            errorMessage = "Failed to create folder"
+                                        }
+                                    } catch (e: Exception) {
+                                        errorMessage = "Error: ${e.message}"
+                                    } finally {
+                                        isLoading = false
+                                    }
+                                }
+                            }
+                        },
+                        enabled = newFolderName.isNotBlank()
+                    ) {
+                        Text("Create")
+                    }
+                }
             }
-        }
+        )
     }
+
+    exportMessage?.let {
+        AlertDialog(
+            onDismissRequest = { exportMessage = null },
+            title = { Text("Export Status") },
+            text = { Text(it) },
+            confirmButton = {
+                Button(onClick = { exportMessage = null }) {
+                    Text("OK")
+                }
+            }
+        )
+    }
+
+
 }
 
-// Function to Load Animals
-fun loadAnimals(token: String, userId: String, onComplete: (List<Animal>) -> Unit) {
+fun loadAnimals(token: String,  onComplete: (List<Animal>) -> Unit) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
-            val response = RetrofitClient.apiService.getAnimalsByOwnerId(userId, "Bearer $token")
+            val response = RetrofitClient.apiService.getAnimalsByOwnerId( "Bearer $token")
             if (response.isSuccessful) {
                 onComplete(response.body() ?: emptyList())
             } else {
@@ -243,4 +594,178 @@ fun loadAnimals(token: String, userId: String, onComplete: (List<Animal>) -> Uni
             Log.e("LoadAnimals", "Error: ${e.message}")
         }
     }
+}
+
+private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<Animal>) = withContext(Dispatchers.IO) {
+    val document = PDDocument()
+
+    val margin = 50f
+    val tableWidth = PDPage().mediaBox.width - 2 * margin
+    val cellMargin = 5f
+    val rowHeight = 20f
+    val headerHeight = 25f
+    val tableStartYOffset = 30f // Space after header content
+    val tableBottomY = margin
+
+    val columnWidths = floatArrayOf(30f, 80f, 80f, 40f, 100f, tableWidth - 330f)
+
+    // Function to replace Romanian characters
+    fun String.replaceRomanianChars(): String {
+        return this
+            .replace('ț', 't')
+            .replace('ș', 's')
+            .replace('ă', 'a')
+            .replace('î', 'i')
+            .replace('â', 'a')
+            .replace('Ț', 'T')
+            .replace('Ș', 'S')
+            .replace('Ă', 'A')
+            .replace('Î', 'I')
+            .replace('Â', 'A')
+    }
+    val headers = listOf("Nr.", "Specie", "Rasa", "Sex", "Data nastere", "Cod identificare")
+    fun drawHeader(contentStream: PDPageContentStream, startY: Float) {
+        var currentX = margin
+        contentStream.setFont(PDType1Font.HELVETICA_BOLD, 10f)
+        for (i in headers.indices) {
+            contentStream.beginText()
+            contentStream.setTextMatrix(Matrix.getTranslateInstance(currentX + cellMargin,
+                startY - headerHeight + (headerHeight - 10f) / 2f))
+            contentStream.showText(headers[i].replaceRomanianChars())
+            contentStream.endText()
+            currentX += columnWidths[i]
+        }
+        contentStream.setLineWidth(0.5f)
+        contentStream.moveTo(margin, startY - headerHeight)
+        contentStream.lineTo(margin + tableWidth, startY - headerHeight)
+        contentStream.stroke()
+         currentX = margin
+         for (width in columnWidths) {
+             contentStream.moveTo(currentX, startY)
+             contentStream.lineTo(currentX, startY - headerHeight)
+             contentStream.stroke()
+             currentX += width
+         }
+         contentStream.moveTo(margin + tableWidth, startY)
+         contentStream.lineTo(margin + tableWidth, startY - headerHeight)
+         contentStream.stroke()
+    }
+
+    var page = PDPage()
+    document.addPage(page)
+    var contentStream = PDPageContentStream(document, page)
+    var currentY = page.mediaBox.height - margin
+
+    // Draw initial header content
+    contentStream.beginText()
+    contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14f)
+    contentStream.setTextMatrix(Matrix.getTranslateInstance(margin, currentY))
+    contentStream.showText("Formular de identificare".replaceRomanianChars())
+    contentStream.endText()
+
+    currentY -= 20f
+
+    contentStream.beginText()
+    contentStream.setFont(PDType1Font.HELVETICA, 10f)
+    contentStream.setTextMatrix(Matrix.getTranslateInstance(margin, currentY))
+    contentStream.showText("Animal List Export".replaceRomanianChars()) // Placeholder, could add more details if available
+    contentStream.endText()
+
+    currentY -= tableStartYOffset // Space before table
+    val tableStartX = margin
+
+    drawHeader(contentStream, currentY)
+    currentY -= headerHeight // Move below header
+
+    contentStream.setFont(PDType1Font.HELVETICA, 8f) // Use standard font for table content
+
+    // Table content
+    animals.forEachIndexed { index, animal ->
+        // Check if new page is needed
+        if (currentY - rowHeight < tableBottomY) { // Check if enough space for next row
+            contentStream.close()
+            page = PDPage()
+            document.addPage(page)
+            contentStream = PDPageContentStream(document, page)
+            currentY = page.mediaBox.height - margin // Reset Y for new page
+            drawHeader(contentStream, currentY)
+            currentY -= headerHeight // Move below header on new page
+            contentStream.setFont(PDType1Font.HELVETICA, 8f) // Use standard font for table content on new page
+        }
+
+        // Draw row content
+        var currentColumnX = tableStartX
+        val rowY = currentY - (rowHeight / 2f) + (8f / 2f) // Center text vertically in row
+
+        // Nr.
+        contentStream.beginText()
+        contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
+        contentStream.showText((index + 1).toString())
+        contentStream.endText()
+        currentColumnX += columnWidths[0]
+
+        // Specie
+        contentStream.beginText()
+        contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
+        contentStream.showText("Ovine".replaceRomanianChars()) // Using placeholder, need actual specie
+        contentStream.endText()
+        currentColumnX += columnWidths[1]
+
+        // Rasa
+        contentStream.beginText()
+        contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
+        contentStream.showText(animal.species.replaceRomanianChars()) // Using species as placeholder for breed for now
+        contentStream.endText()
+        currentColumnX += columnWidths[2]
+
+        // Sex
+        contentStream.beginText()
+        contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
+        val genderText = when (animal.gender.toLowerCase()) {
+            "male", "m", "♂" -> "male"
+            "female", "f", "♀" -> "female"
+            else -> animal.gender.replaceRomanianChars() // Fallback with replacement
+        }
+        contentStream.showText(genderText)
+        contentStream.endText()
+        currentColumnX += columnWidths[3]
+
+        // Data nastere
+        contentStream.beginText()
+        contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
+        contentStream.showText(animal.birthDate.replaceRomanianChars())
+        contentStream.endText()
+        currentColumnX += columnWidths[4]
+
+        // Cod identificare
+        contentStream.beginText()
+        contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
+        contentStream.showText(animal.id.replaceRomanianChars())
+        contentStream.endText()
+        currentColumnX += columnWidths[5]
+
+        // Draw horizontal line below row
+        contentStream.setLineWidth(0.5f)
+        contentStream.moveTo(margin, currentY - rowHeight)
+        contentStream.lineTo(margin + tableWidth, currentY - rowHeight)
+        contentStream.stroke()
+
+         // Draw vertical lines for this row
+         currentColumnX = margin
+         for (width in columnWidths) {
+             contentStream.moveTo(currentColumnX, currentY)
+             contentStream.lineTo(currentColumnX, currentY - rowHeight)
+             contentStream.stroke()
+             currentColumnX += width
+         }
+         contentStream.moveTo(margin + tableWidth, currentY)
+         contentStream.lineTo(margin + tableWidth, currentY - rowHeight)
+         contentStream.stroke()
+
+        currentY -= rowHeight // Move to the next row position
+    }
+
+    contentStream.close()
+    document.save(outputStream)
+    document.close()
 }

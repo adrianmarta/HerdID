@@ -1,18 +1,21 @@
 package com.example.farmerappfrontend
 
+import android.widget.Toast
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.border
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -24,131 +27,128 @@ fun LoginScreen(
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
-    var errorMessage by remember { mutableStateOf("") }
+    var idError by remember { mutableStateOf("") }
+    var emailError by remember { mutableStateOf("") }
+    var passwordError by remember { mutableStateOf("") }
 
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+    fun validate(): Boolean {
+        idError = if (id.isBlank()) "ID is required" else ""
+        emailError = if (email.isBlank()) "Email is required" else ""
+        passwordError = if (password.isBlank()) "Password is required" else ""
+        return idError.isEmpty() && emailError.isEmpty() && passwordError.isEmpty()
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background
     ) {
-        Text(
-            text = "Login",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // ID Input
-        OutlinedTextField(
-            value = id,
-            onValueChange = { id = it },
-            label = { Text("ID") },
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = MaterialTheme.colorScheme.background,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = Color.Gray
-            )
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Email Input
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            singleLine = true,
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = MaterialTheme.colorScheme.background,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = Color.Gray
-            )
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        // Password Input
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp),
-            singleLine = true,
-            visualTransformation = PasswordVisualTransformation(),
-            textStyle = MaterialTheme.typography.bodyLarge,
-            colors = TextFieldDefaults.outlinedTextFieldColors(
-                containerColor = MaterialTheme.colorScheme.background,
-                focusedBorderColor = MaterialTheme.colorScheme.primary,
-                unfocusedBorderColor = Color.Gray
-            )
-        )
-
-        Spacer(modifier = Modifier.height(32.dp))
-
-        // Login Button
-        Button(
-            onClick = {
-                isLoading = true
-                errorMessage = ""
-                scope.launch {
-                    try {
-                        val loginRequest = LoginRequest(id, email, password)
-                        val response = RetrofitClient.apiService.login(loginRequest)
-                        onLoginSuccess(response.token)
-                    } catch (e: Exception) {
-                        errorMessage = "Login failed: ${e.message}"
-                    } finally {
-                        isLoading = false
-                    }
-                }
-            },
-            enabled = !isLoading,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 8.dp)
-                .height(56.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                .fillMaxSize()
+                .padding(horizontal = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
-            Text("Login", color = Color.White, style = MaterialTheme.typography.bodyLarge)
-        }
+            Text("Login", style = MaterialTheme.typography.headlineLarge, color = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.height(32.dp))
 
-        Spacer(modifier = Modifier.height(16.dp))
-
-        TextButton(onClick = navToRegister) {
-            Text("Don't have an account? Register")
-        }
-
-        // Loading / Error
-        if (isLoading) {
-            CircularProgressIndicator(
-                modifier = Modifier.padding(16.dp),
-                color = MaterialTheme.colorScheme.primary
+            OutlinedTextField(
+                value = id,
+                onValueChange = { id = it },
+                label = { Text("ID") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                isError = idError.isNotEmpty(),
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Next),
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.Gray
+                )
             )
-        }
+            if (idError.isNotEmpty()) Text(idError, color = MaterialTheme.colorScheme.error)
+            Spacer(modifier = Modifier.height(16.dp))
 
-        if (errorMessage.isNotEmpty()) {
-            Text(
-                text = errorMessage,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 16.dp)
+            OutlinedTextField(
+                value = email,
+                onValueChange = { email = it },
+                label = { Text("Email") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                isError = emailError.isNotEmpty(),
+                keyboardOptions = KeyboardOptions.Default.copy(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.Gray
+                )
             )
+            if (emailError.isNotEmpty()) Text(emailError, color = MaterialTheme.colorScheme.error)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            OutlinedTextField(
+                value = password,
+                onValueChange = { password = it },
+                label = { Text("Password") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                isError = passwordError.isNotEmpty(),
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Done),
+                colors = TextFieldDefaults.outlinedTextFieldColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.Gray
+                )
+            )
+            if (passwordError.isNotEmpty()) Text(passwordError, color = MaterialTheme.colorScheme.error)
+            Spacer(modifier = Modifier.height(32.dp))
+
+            Button(
+                onClick = {
+                    if (validate()) {
+                        isLoading = true
+                        scope.launch {
+                            try {
+                                val loginRequest = LoginRequest(id, email, password)
+                                val response = RetrofitClient.apiService.login(loginRequest)
+                                onLoginSuccess(response.token)
+                            } catch (e: HttpException) {
+                                val message = when (e.code()) {
+                                    401 -> "Invalid password. Please try again."
+                                    404 -> "User not found. Please check your ID and Email."
+                                    else -> "Unexpected error: ${e.message()}"
+                                }
+                                Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Login failed: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                            } finally {
+                                isLoading = false
+                            }
+                        }
+                    }
+                },
+                enabled = !isLoading,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+            ) {
+                if (isLoading) {
+                    CircularProgressIndicator(color = Color.White, strokeWidth = 2.dp)
+                } else {
+                    Text("Login", color = Color.White, style = MaterialTheme.typography.bodyLarge)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            TextButton(onClick = navToRegister) {
+                Text("Don't have an account? Register")
+            }
         }
     }
 }
@@ -161,4 +161,3 @@ fun PreviewLoginScreen() {
         navToRegister = {}
     )
 }
-

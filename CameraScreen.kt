@@ -30,11 +30,16 @@ import java.util.concurrent.Executors
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import androidx.navigation.NavController
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 
 @Composable
 fun CameraScreen(
     token: String,
-    onAnimalDetected: ((String?, Boolean) -> Unit)? = null
+    navController: NavController
 ) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var detectedAnimalId by remember { mutableStateOf<String?>(null) }
@@ -120,6 +125,20 @@ fun CameraScreen(
                         Text("OK")
                     }
                 }
+            )
+        }
+
+        // Add a back button
+        IconButton(
+            onClick = { navController.navigateUp() },
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(16.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.ArrowBack,
+                contentDescription = "Back",
+                tint = MaterialTheme.colorScheme.onSurface
             )
         }
     }

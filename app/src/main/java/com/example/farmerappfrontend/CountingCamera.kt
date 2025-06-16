@@ -30,6 +30,7 @@ fun CountingCamera(
     var scannedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var popupMessage by remember { mutableStateOf<String?>(null) }
     var isCounting by remember { mutableStateOf(true) }
+    var animalDetails by remember { mutableStateOf<AnimalDetails?>(null) }
     val scope = rememberCoroutineScope()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -38,11 +39,35 @@ fun CountingCamera(
                 onIDDetected = { id ->
                     if (id != null && !scannedIds.contains(id)) {
                         scannedIds = scannedIds + id
-                        val isPresent = animalIds.contains(id)
-                        popupMessage = "ID: $id\nStatus: ${if (isPresent) "Present ✅" else "Not Present ❌"}"
-                        scope.launch {
-                            kotlinx.coroutines.delay(5000) // Show popup for 5 seconds
-                            popupMessage = null
+                        val isPresent = animalIds.any { it.trim() == id.trim() }
+                        if (isPresent) {
+                            // Fetch animal details
+                            scope.launch {
+                                try {
+                                    val response = RetrofitClient.apiService.getAnimalDetails(id.trim(), token)
+                                    if (response.isSuccessful) {
+                                        animalDetails = response.body()
+                                        popupMessage = null // Hide the old popup
+                                    } else {
+                                        animalDetails = null
+                                        popupMessage = "ID: $id\nStatus: Present ✅\n(Details unavailable)"
+                                    }
+                                } catch (e: Exception) {
+                                    animalDetails = null
+                                    popupMessage = "ID: $id\nStatus: Present ✅\n(Details unavailable)"
+                                }
+                                // Hide after 5 seconds
+                                kotlinx.coroutines.delay(5000)
+                                animalDetails = null
+                                popupMessage = null
+                            }
+                        } else {
+                            animalDetails = null
+                            popupMessage = "ID: $id\nStatus: Not Present ❌"
+                            scope.launch {
+                                kotlinx.coroutines.delay(5000)
+                                popupMessage = null
+                            }
                         }
                     }
                 },
@@ -50,6 +75,24 @@ fun CountingCamera(
                     popupMessage = "Error: $error"
                 },
                 modifier = Modifier.fillMaxSize()
+            )
+        }
+
+        // Show animal details dialog if present
+        animalDetails?.let { details ->
+            AlertDialog(
+                onDismissRequest = { animalDetails = null },
+                title = { Text("Animal Details") },
+                text = {
+                    Column {
+                        Text("ID: ${details.id}")
+                        Text("Gender: ${details.gender}")
+                        Text("Birth Date: ${details.birthDate}")
+                        Text("Species: ${details.species}")
+                        Text("Produces Milk: ${if (details.producesMilk) "Yes" else "No"}")
+                    }
+                },
+                confirmButton = {}
             )
         }
 

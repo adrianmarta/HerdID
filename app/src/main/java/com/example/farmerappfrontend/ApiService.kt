@@ -21,9 +21,8 @@ interface ApiService {
     @GET("/api/users/profile")
     suspend fun getUserProfile(@Header("Authorization") token: String): UserProfile
     // ApiService.kt
-    @GET("api/animals/owner/{ownerId}")
+    @GET("api/animals/owner-animals")
     suspend fun getAnimalsByOwnerId(
-        @Path("ownerId") ownerId: String,
         @Header("Authorization") token: String
     ): Response<List<Animal>>
 
@@ -39,11 +38,15 @@ interface ApiService {
         @Header("Authorization") token: String,
         @Body folderRequest: FolderRequest
     ): Response<FolderResponse>
-    @GET("/api/folders/user/{ownerId}")
+    @GET("/api/folders/user")
     suspend fun getFolders(
         @Header("Authorization") token: String,
-        @Path("ownerId") ownerId: String
     ): Response<List<Folder>>
+    @GET("/api/folders/{folderId}")
+    suspend fun getFolder(
+        @Path("folderId") folderId: String,
+        @Header("Authorization") token: String
+    ): Response<Folder>
     @GET("/api/folders/{folderId}/animals")
     suspend fun getAnimalsByFolderId(
         @Path("folderId") folderId: String,
@@ -102,9 +105,15 @@ interface ApiService {
         @Path("id") animalId: String,
         @Header("Authorization") token: String
     ): Response<Animal>
-    @POST("api/events")
+    @PUT("api/animals/{id}")
+    suspend fun updateAnimal(
+        @Path("id") animalId: String,
+        @Header("Authorization") token: String,
+        @Body updateRequest: AnimalUpdateRequest
+    ): Response<AnimalDetails>
+    @POST("api/events/animal/{animalId}")
     suspend fun postEvent(
-        @Query("animalId") animalId: String,
+        @Path("animalId") animalId: String,
         @Header("Authorization") token: String,
         @Body event: Map<String, @JvmSuppressWildcards Any>
     ): Response<Void>
@@ -117,4 +126,63 @@ interface ApiService {
     @POST("/api/auth/register")
     suspend fun register(@Body registerRequest: RegisterRequest): Response<Void>
 
+    @POST("/api/animals/batch")
+    suspend fun addAnimalsBatch(
+        @Header("Authorization") token: String,
+        @Body animals: List<AnimalDetails>
+    ): Response<Map<String, Any>>
+    @GET("/api/animals/species")
+    suspend fun getSpecies(): Response<List<Map<String, String>>>
+
+    @GET("/api/events/types")
+    suspend fun getEventTypes(): Response<Map<String, Map<String, String>>>
+
+    @GET("/api/animals/search")
+    suspend fun searchAnimals(
+        @Query("query") query: String,
+        @Header("Authorization") token: String
+    ): Response<List<Animal>>
+
+    @GET("/api/animals/by-birth-date")
+    suspend fun getAnimalsByBirthDate(
+        @Query("startDate") startDate: String,
+        @Query("endDate") endDate: String,
+        @Header("Authorization") token: String
+    ): Response<List<Animal>>
+
+    @GET("/api/animals/by-sickness")
+    suspend fun getAnimalsBySickness(
+        @Query("sicknessName") sicknessName: String,
+        @Header("Authorization") token: String
+    ): Response<List<Animal>>
+
+    @GET("/api/animals/by-vaccination")
+    suspend fun getAnimalsByVaccination(
+        @Query("vaccineName") vaccineName: String,
+        @Header("Authorization") token: String
+    ): Response<List<Animal>>
+
+    // Get all animal events
+    @GET("api/events")
+    suspend fun getAllEvents(
+        @Header("Authorization") token: String
+    ): Response<List<AnimalEvent>>
+
+    @GET("api/statistics")
+    suspend fun getStatistics(
+        @Header("Authorization") token: String,
+        @Query("folderId") folderId: String? = null
+    ): Response<StatisticsResponse>
+
+    @POST("/api/animals")
+    suspend fun addAnimal(
+        @Header("Authorization") token: String,
+        @Body animal: AnimalDetails
+    ): Response<Unit>
+
+    @GET("/api/events/sickness-names")
+    suspend fun getSicknessNames(@Header("Authorization") token: String): Response<List<String>>
+
+    @GET("/api/events/vaccine-names")
+    suspend fun getVaccineNames(@Header("Authorization") token: String): Response<List<String>>
 }

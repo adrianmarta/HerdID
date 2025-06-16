@@ -22,6 +22,8 @@ import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.CoroutineScope
 
 @Composable
 fun CameraIDReader(
@@ -34,6 +36,8 @@ fun CameraIDReader(
     val executor = remember { Executors.newSingleThreadExecutor() }
     val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
+    var cooldownActive by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // Request permissions dynamically
     LaunchedEffect(Unit) {
@@ -66,7 +70,10 @@ fun CameraIDReader(
                             executor = executor,
                             previewView = previewView!!,
                             onIDDetected = onIDDetected,
-                            onError = onError
+                            onError = onError,
+                            cooldownActive = cooldownActive,
+                            setCooldownActive = { cooldownActive = it },
+                            scope = scope
                         )
                     } catch (e: Exception) {
                         onError("Failed to initialize camera: ${e.message}")
@@ -83,26 +90,29 @@ private fun setupCamera(
     executor: ExecutorService,
     previewView: PreviewView,
     onIDDetected: (String?) -> Unit,
-    onError: (String) -> Unit
+    onError: (String) -> Unit,
+    cooldownActive: Boolean,
+    setCooldownActive: (Boolean) -> Unit,
+    scope: CoroutineScope
 ) {
     try {
         val preview = Preview.Builder().build().apply {
             setSurfaceProvider(previewView.surfaceProvider)
         }
-
         val imageAnalyzer = ImageAnalysis.Builder()
             .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
             .build().apply {
                 setAnalyzer(executor) { imageProxy ->
-                    analyzeImage(imageProxy, onIDDetected, onError)
+                    analyzeImage(
+                        imageProxy,
+                        onIDDetected,
+                        onError
+                    )
                 }
             }
-
         val cameraSelector = CameraSelector.Builder()
             .requireLensFacing(CameraSelector.LENS_FACING_BACK)
             .build()
-
-        // Unbind all and rebind the camera
         cameraProvider.unbindAll()
         cameraProvider.bindToLifecycle(
             lifecycleOwner,
@@ -125,12 +135,17 @@ private fun analyzeImage(
     if (mediaImage != null) {
         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastReadTime.get() < 5000) {
+            imageProxy.close()
+            return
+        }
         recognizer.process(image)
             .addOnSuccessListener { visionText ->
                 val detectedID = extractAnimalIdFromText(visionText)
                 if (detectedID != null) {
-                    onIDDetected(detectedID) // Pass detected ID
+                    onIDDetected(detectedID)
+                    lastReadTime.set(System.currentTimeMillis())
                 }
             }
             .addOnFailureListener { e ->
@@ -144,17 +159,12 @@ private fun analyzeImage(
     }
 }
 
+// Add a static variable outside the function to hold the last read time
+private val lastReadTime = java.util.concurrent.atomic.AtomicLong(0L)
 
 private fun extractAnimalIdFromText(visionText: Text): String? {
-    // Normalize the text by removing extra spaces and line breaks
     val normalizedText = visionText.text.replace("\\s+".toRegex(), "")
-
-    // Updated regex to capture "RO" followed by 4 digits and then 6 digits
     val regex = Regex("RO\\d{10}")
-
-    // Match the pattern in the normalized text
     val match = regex.find(normalizedText)
-
-    // Return the matched value if found, otherwise return null
     return match?.value
 }

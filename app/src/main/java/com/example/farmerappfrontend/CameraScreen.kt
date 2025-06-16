@@ -22,105 +22,93 @@ import androidx.lifecycle.LifecycleOwner
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
-
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
+import androidx.navigation.NavController
 
 @Composable
 fun CameraScreen(
     token: String,
-    onAnimalDetected: ((String?, Boolean) -> Unit)? = null
+    navController: NavController,
+    existingAnimalIds: List<String>
 ) {
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var detectedAnimalId by remember { mutableStateOf<String?>(null) }
-    var animalDetails by remember { mutableStateOf<Animal?>(null) }
-    var isAnimalValid by remember { mutableStateOf<Boolean?>(null) }
-    var cooldownActive by remember { mutableStateOf(false) }
-
+    var scannedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var popupMessage by remember { mutableStateOf<String?>(null) }
+    var isCounting by remember { mutableStateOf(true) }
+    var validatedAnimals by remember { mutableStateOf<Set<String>>(existingAnimalIds.toSet()) }
     val scope = rememberCoroutineScope()
+
+    // Validate existing animals against backend on startup
+    LaunchedEffect(Unit) {
+        try {
+            // Validate each existing animal ID
+            existingAnimalIds.forEach { id ->
+                val exists = validateAnimalIdWithBackend(token, id)
+                if (!exists) {
+                    // Remove from validated set if it doesn't exist in backend
+                    validatedAnimals = validatedAnimals - id
+                }
+            }
+        } catch (e: Exception) {
+            popupMessage = "Error validating animals: ${e.message}"
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         CameraIDReader(
             onIDDetected = { id ->
-                if (!cooldownActive && id != null) {
-                    cooldownActive = true
-                    detectedAnimalId = id
-                    // Fetch animal details and validate
+                if (id != null && !scannedIds.contains(id)) {
                     scope.launch {
                         try {
-                            val isValid = validateAnimalIdWithBackend(token, id)
-                            isAnimalValid = isValid
-                            if (isValid) {
-                                // Fetch additional animal details
-                                animalDetails = fetchAnimalDetails(token, id)
+                            val exists = validateAnimalIdWithBackend(token, id)
+                            validatedAnimals = if (exists) {
+                                validatedAnimals + id
+                            } else {
+                                validatedAnimals - id
                             }
-                        } catch (e: Exception) {
-                            errorMessage = e.message
-                        } finally {
-                            // Cooldown period of 3 seconds
+                            scannedIds = scannedIds + id
+                            popupMessage = "ID: $id\nStatus: ${if (exists) "Present ✅" else "New Animal ⭐"}"
                             kotlinx.coroutines.delay(3000)
-                            cooldownActive = false
+                            popupMessage = null
+                        } catch (e: Exception) {
+                            popupMessage = "Error validating animal: ${e.message}"
+                            kotlinx.coroutines.delay(3000)
+                            popupMessage = null
                         }
                     }
                 }
             },
             onError = { error ->
-                if (!cooldownActive) {
-                    errorMessage = error
-                }
+                popupMessage = "Error: $error"
             },
             modifier = Modifier.fillMaxSize()
         )
 
-        // Show popup for results
-        if (detectedAnimalId != null && isAnimalValid != null) {
+        // Status popup
+        popupMessage?.let {
             AlertDialog(
-                onDismissRequest = {
-                    detectedAnimalId = null
-                    isAnimalValid = null
-                    animalDetails = null
-                },
-                title = { Text("Animal ID Validation") },
-                text = {
-                    Text(
-                        text = if (isAnimalValid == true) {
-                            "Animal ID: $detectedAnimalId\nStatus: Valid ✅\n" +
-                                    "Gender: ${animalDetails?.gender ?: "Unknown"}\n" +
-                                    "Birth Date: ${animalDetails?.birthDate ?: "Unknown"}"
-                        } else {
-                            "Animal ID: $detectedAnimalId\nStatus: Invalid ❌"
-                        }
-                    )
-                },
-                confirmButton = {
-                    Button(onClick = {
-                        detectedAnimalId = null
-                        isAnimalValid = null
-                        animalDetails = null
-                    }) {
-                        Text("OK")
-                    }
-                }
+                onDismissRequest = { popupMessage = null },
+                title = { Text("Animal ID Status") },
+                text = { Text(it) },
+                confirmButton = {}
             )
         }
 
-        // Show error messages
-        errorMessage?.let {
-            AlertDialog(
-                onDismissRequest = { errorMessage = null },
-                title = { Text("Error") },
-                text = { Text(it) },
-                confirmButton = {
-                    Button(onClick = { errorMessage = null }) {
-                        Text("OK")
-                    }
-                }
-            )
+        // Done button
+        Button(
+            onClick = {
+                val readAnimals = scannedIds.toList()
+                val newAnimals = readAnimals.filterNot { validatedAnimals.contains(it) }
+                navController.navigate("readAnimals/$token/${readAnimals.joinToString(",")}" +
+                        "/${newAnimals.joinToString(",")}")
+            },
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(16.dp)
+        ) {
+            Text("Done (${scannedIds.size} animals read)")
         }
     }
 }

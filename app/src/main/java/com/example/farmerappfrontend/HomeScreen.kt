@@ -1,8 +1,12 @@
 package com.example.farmerappfrontend
 
+import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+
+
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -12,16 +16,32 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.List
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
+import kotlinx.coroutines.launch
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     token: String,
-    userId: String,
     onLogout: () -> Unit,
     navController: NavController
 ) {
+    val scope = rememberCoroutineScope()
     val customPurple = Color(0xFF6650a4) // Primary color for branding
-
+    val cameraColor = Color(0xFF6650a4)
+    val animalListColor = Color(0xFF009688)
+    val filesColor = Color(0xFFFF9800)
+    val statsColor = Color(0xFF1976D2)
+    val context = LocalContext.current
     Scaffold(
         topBar = {
             TopAppBar(
@@ -41,7 +61,7 @@ fun HomeScreen(
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        contentPadding = PaddingValues(horizontal = 16.dp) // Add padding to fit the text properly
+                        contentPadding = PaddingValues(horizontal = 16.dp)
                     ) {
                         Text(
                             "Log Out",
@@ -57,54 +77,108 @@ fun HomeScreen(
                 )
             )
         },
-        containerColor = MaterialTheme.colorScheme.background // Ensure a consistent background
+        containerColor = MaterialTheme.colorScheme.background
     ) { innerPadding ->
-        Column(
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            verticalArrangement = Arrangement.Center,
-            horizontalAlignment = Alignment.CenterHorizontally
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            Color(0xFFF3EFFF), // light purple
+                            Color(0xFFFFFFFF)  // white
+                        )
+                    )
+                )
         ) {
-            // Camera Button
-            Button(
-                onClick = { navController.navigate("camera/$token") },
-                colors = ButtonDefaults.buttonColors(containerColor = customPurple),
-                shape = MaterialTheme.shapes.medium,
+            // Faint logo in the background, centered
+            Image(
+                painter = painterResource(id = R.drawable.logo),
+                contentDescription = "Background Logo",
                 modifier = Modifier
-                    .width(250.dp)
-                    .padding(vertical = 12.dp)
-            ) {
-                Text("Camera", fontWeight = FontWeight.Bold, color = Color.White)
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Animal List Button
-            Button(
-                onClick = { navController.navigate("animals/$userId") },
-                colors = ButtonDefaults.buttonColors(containerColor = customPurple),
-                shape = MaterialTheme.shapes.medium,
+                    .fillMaxWidth()
+                    .align(Alignment.Center)
+                    .alpha(0.08f)
+            )
+            // Main content
+            Column(
                 modifier = Modifier
-                    .width(250.dp)
-                    .padding(vertical = 12.dp)
+                    .fillMaxSize()
+                    .padding(innerPadding),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Animal List", fontWeight = FontWeight.Bold, color = Color.White)
+                Spacer(modifier = Modifier.height(48.dp))
+                // 2x2 Grid of Main Buttons
+                Column(
+                    modifier = Modifier.fillMaxWidth(0.9f),
+                    verticalArrangement = Arrangement.spacedBy(60.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(32.dp)
+                    ) {
+                        HomeGridButton(
+                            label = "Camera",
+                            icon = Icons.Default.CameraAlt,
+                            color = cameraColor,
+                            onClick = {
+                                navController.navigate("countAnimals/$token")
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        HomeGridButton(
+                            label = "Animal List",
+                            icon = Icons.Default.List,
+                            color = animalListColor,
+                            onClick = { navController.navigate("animals") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(32.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(32.dp)
+                    ) {
+                        HomeGridButton(
+                            label = "Files",
+                            icon = Icons.Default.Folder,
+                            color = filesColor,
+                            onClick = { navController.navigate("files") },
+                            modifier = Modifier.weight(1f)
+                        )
+                        HomeGridButton(
+                            label = "Statistics",
+                            icon = Icons.Default.BarChart,
+                            color = statsColor,
+                            onClick = { navController.navigate("statistics") },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Files Button
-            Button(
-                onClick = { navController.navigate("files") },
-                colors = ButtonDefaults.buttonColors(containerColor = customPurple),
-                shape = MaterialTheme.shapes.medium,
-                modifier = Modifier
-                    .width(250.dp)
-                    .padding(vertical = 12.dp)
-            ) {
-                Text("Files", fontWeight = FontWeight.Bold, color = Color.White)
-            }
+@Composable
+fun HomeGridButton(label: String, icon: ImageVector, color: Color, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Button(
+        onClick = onClick,
+        colors = ButtonDefaults.buttonColors(containerColor = color),
+        shape = MaterialTheme.shapes.medium,
+        modifier = modifier
+            .aspectRatio(1.6f)
+            .fillMaxWidth()
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(icon, contentDescription = label, tint = Color.White, modifier = Modifier.size(36.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(label, fontWeight = FontWeight.Bold, color = Color.White, fontSize = 16.sp)
         }
     }
 }

@@ -1,5 +1,6 @@
 package com.example.farmerappfrontend
 
+import android.annotation.SuppressLint
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -32,6 +33,7 @@ class MainActivity : ComponentActivity() {
 }
 
 // MainActivity.kt
+@SuppressLint("NewApi")
 @Composable
 fun MyApp() {
     val navController = rememberNavController()
@@ -100,150 +102,148 @@ fun MyApp() {
 
             composable("home/{token}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
-                var userId by remember { mutableStateOf<String?>(null) }
-                var errorMessage by remember { mutableStateOf<String?>(null) }
-
-                LaunchedEffect(token) {
-                    try {
-                        val userProfile = RetrofitClient.apiService.getUserProfile("Bearer $token")
-                        userId = userProfile.id
-                    } catch (e: Exception) {
-                        errorMessage = "Failed to fetch user ID: ${e.message}"
-                    }
-                }
-
-                if (userId != null) {
-                    HomeScreen(
-                        token = token,
-                        userId = userId!!,
-                        onLogout = {
-                            TokenManager.removeToken(context)
-                            navController.navigate("login") {
-                                popUpTo("home") { inclusive = true }
-                            }
-                        },
-                        navController = navController
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (errorMessage != null) {
-                            Text(errorMessage!!, color = MaterialTheme.colorScheme.error)
-                        } else {
-                            CircularProgressIndicator()
+                HomeScreen(
+                    token = token,
+                    onLogout = {
+                        TokenManager.removeToken(context)
+                        navController.navigate("login") {
+                            popUpTo("home") { inclusive = true }
                         }
-                    }
-                }
+                    },
+                    navController = navController
+                )
             }
-            composable("animals/{userId}") { backStackEntry ->
-                val userId = backStackEntry.arguments?.getString("userId") ?: ""
+            composable("animals") { backStackEntry ->
                 if (token != null) {
-                    AnimalListScreen(token = token, userId = userId, navController = navController)
+                    AnimalListScreen(token = token, navController = navController)
                 }
             }
 
-            composable("camera/{token}") { backStackEntry ->
+            composable("camera/{token}/{existingAnimalIds}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
-                CameraScreen(token = token) // Pass the token here
+                val existingAnimalIds = backStackEntry.arguments
+                    ?.getString("existingAnimalIds")
+                    ?.split(",") ?: emptyList()
+
+                CameraScreen(
+                    token = token,
+                    navController = navController,
+                    existingAnimalIds = existingAnimalIds
+                )
+            }
+            composable("fileUpload/$token")
+            {
+                backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                AddAnimalsScreen(token=token,navController=navController)
             }
             composable("files") {
                 FilesScreen(navController)
             }
-            composable("folder/{folderName}") { backStackEntry ->
-                val folderName = backStackEntry.arguments?.getString("folderName") ?: ""
-                if (token != null) {
-                    AnimalListScreen(
-                        token = token,
-                        userId = folderName,
-                        navController = navController // Here, the folder name acts as an identifier for animals in the folder
-                    )
-                }
-            }
-            composable("animalDetails/{animalId}") { backStackEntry ->
-                val animalId = backStackEntry.arguments?.getString("animalId") ?: ""
-                val token = backStackEntry.arguments?.getString("token") ?: ""
-                AnimalDetailsScreen(animalId = animalId, token = token, navController = navController)
-            }
+
             composable("folder/{folderId}/animals") { backStackEntry ->
                 val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
-                val userId = backStackEntry.arguments?.getString("userId") ?: ""
+
                 if (token != null) {
                     AnimalListScreenByFolder(
                         token = token,
                         folderId = folderId,
-                        navController=navController,
-                        ownerId = userId
+                        navController=navController
                     )
                 }
             }
-            composable("countAnimals/{token}/{ownerId}") { backStackEntry ->
+            composable("countAnimals/{token}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
-                val ownerId = backStackEntry.arguments?.getString("ownerId") ?: ""
                 var animalIds by remember { mutableStateOf<List<String>>(emptyList()) }
                 var isLoading by remember { mutableStateOf(true) }
-                val scope = rememberCoroutineScope()
 
-                LaunchedEffect(Unit) {
-                    scope.launch {
-                        try {
-                            val response = RetrofitClient.apiService.getAnimalsByOwnerId(ownerId, "Bearer $token")
-                            if (response.isSuccessful) {
-                                animalIds = response.body()?.map { it.id } ?: emptyList()
-                            }
-                        } catch (e: Exception) {
-                            // Handle error (e.g., show a message or log the error)
-                        } finally {
-                            isLoading = false
+                LaunchedEffect(token) {
+                    try {
+                        val response = RetrofitClient.apiService.getAnimalsByOwnerId("Bearer $token")
+                        if (response.isSuccessful) {
+                            animalIds = response.body()?.map { it.id } ?: emptyList()
+                            println("Fetched animal IDs: $animalIds")
+                        } else {
+                            println("Failed to fetch animals: ${response.message()}")
                         }
+                    } catch (e: Exception) {
+                        println("Error fetching animals: ${e.message}")
                     }
+                    isLoading = false
                 }
 
                 if (isLoading) {
-                    Box(
-                        modifier = Modifier.fillMaxSize(),
-                        contentAlignment = Alignment.Center
-                    ) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator()
                     }
                 } else {
                     CountingCamera(
                         token = token,
                         animalIds = animalIds,
-                        onComplete = { notReadIds ->
-                            navController.navigate(
-                                "notReadAnimals/$token/${notReadIds.joinToString(",")}/$ownerId"
-                            ) {
-                                popUpTo("countAnimals/$token/$ownerId") { inclusive = true }
+                        onComplete = {
+                            navController.navigate("home/$token") {
+                                popUpTo("countAnimals/$token") { inclusive = true }
                             }
                         }
                     )
                 }
             }
 
-
-            composable("notReadAnimals/{token}/{notReadIds}/{ownerId}?folderId={folderId}") { backStackEntry ->
+            composable("readAnimals/{token}/{readAnimalIds}/{newAnimalIds}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
-                val notReadIdsString = backStackEntry.arguments?.getString("notReadIds") ?: ""
-                val notReadIds = notReadIdsString.split(",")
-                val ownerId = backStackEntry.arguments?.getString("ownerId") ?: ""
-                val folderId = backStackEntry.arguments?.getString("folderId") // Extract folderId if present
+                val readAnimalIds = backStackEntry.arguments?.getString("readAnimalIds")?.split(",") ?: emptyList()
+                val newAnimalIds = backStackEntry.arguments?.getString("newAnimalIds")?.split(",") ?: emptyList()
 
-                NotReadAnimalsScreen(
+                ReadAnimalsScreen(
                     token = token,
-                    animalIds = notReadIds,
-                    ownerId = ownerId,
-                    onNavigateBack = { navController.popBackStack() },
-                    folderId = folderId, // Pass folderId to NotReadAnimalsScreen
+                    readAnimalIds = readAnimalIds,
+                    newAnimalIds = newAnimalIds,
                     navController = navController
                 )
             }
 
 
 
+            composable("statistics") { backStackEntry ->
+                StatisticsScreen(navController = navController)
+            }
 
+            composable("addSingleAnimal/{token}/{animalId}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                val animalId = backStackEntry.arguments?.getString("animalId") ?: ""
+                AddSingleAnimalScreen(token = token, animalId = animalId, navController = navController)
+            }
 
+            composable("animalDetails/{animalId}") { backStackEntry ->
+                val animalId = backStackEntry.arguments?.getString("animalId") ?: ""
+                if (token != null) {
+                    AnimalDetailsScreen(animalId = animalId, token = token, navController = navController)
+                }
+            }
+
+            composable("folderCamera/{token}/{folderId}?existingAnimalIds={existingAnimalIds}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
+                val existingAnimalIds = backStackEntry.arguments?.getString("existingAnimalIds")?.split(",") ?: emptyList()
+                FolderCameraScreen(
+                    token = token,
+                    folderId = folderId,
+                    navController = navController,
+                    existingAnimalIds = existingAnimalIds
+                )
+            }
+
+            composable("folderReadAnimals/{token}/{folderId}?scannedAnimalIds={scannedAnimalIds}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
+                val scannedAnimalIds = backStackEntry.arguments?.getString("scannedAnimalIds")?.split(",") ?: emptyList()
+                FolderReadAnimalsScreen(
+                    token = token,
+                    folderId = folderId,
+                    navController = navController,
+                    scannedAnimalIds = scannedAnimalIds
+                )
+            }
         }
     }
 }

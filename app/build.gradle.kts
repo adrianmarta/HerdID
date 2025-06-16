@@ -59,6 +59,16 @@ dependencies {
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.9.3")
 
+    // PDFBox-Android for PDF parsing
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
+
+    // Required JAXB & XML binding dependencies
+    implementation("com.github.PhilJay:MPAndroidChart:v3.1.0")
+    implementation ("com.jakewharton.threetenabp:threetenabp:1.4.5")
+
+    // Timber for logging
+    implementation ("com.jakewharton.timber:timber:5.0.1")
+
     // ViewModel and LiveData
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.3.1")
     implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.3.1")
@@ -78,7 +88,6 @@ dependencies {
     kapt("androidx.room:room-compiler:2.5.0")
     implementation("androidx.room:room-ktx:2.5.0")
 
-
     // Testing dependencies
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
@@ -89,7 +98,6 @@ dependencies {
     debugImplementation(libs.androidx.ui.test.manifest)
     implementation("com.google.guava:guava:31.1-android")
 
-
     // CameraX dependencies
     implementation("androidx.camera:camera-core:1.4.0")
     implementation("androidx.camera:camera-lifecycle:1.4.0")
@@ -99,5 +107,4 @@ dependencies {
     // ML Kit for Text Recognition
     implementation("com.google.mlkit:text-recognition:16.0.0")
     implementation ("androidx.compose.material:material-icons-extended:1.5.1")
-
 }
