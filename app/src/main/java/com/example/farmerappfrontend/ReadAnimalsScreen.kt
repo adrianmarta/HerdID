@@ -1,5 +1,6 @@
 package com.example.farmerappfrontend
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -12,38 +13,56 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.example.farmerappfrontend.ui.components.EventDialog
 import kotlinx.coroutines.launch
+import com.example.farmerappfrontend.components.SaveSessionDialog
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.ui.res.painterResource
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReadAnimalsScreen(
     token: String,
-    readAnimalIds: List<String>,
-    newAnimalIds: List<String>,
-    navController: NavController
+    navController: NavController,
+    cameraViewModel: CameraViewModel
 ) {
     val scope = rememberCoroutineScope()
+    val readAnimalIdsSet by cameraViewModel.scannedIds.collectAsState()
+    val initialAnimalIds by cameraViewModel.initialScannedIds.collectAsState()
+    val sessionId by cameraViewModel.sessionId.collectAsState()
+    val sessionName by cameraViewModel.sessionName.collectAsState()
+
+    val readAnimalIds = readAnimalIdsSet.toList()
+    val isEditing = sessionId != null
+    val isModified = remember(initialAnimalIds, readAnimalIdsSet) {
+        initialAnimalIds != readAnimalIdsSet
+    }
+
     var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
     var showFolderDialog by remember { mutableStateOf(false) }
     var showEventDialog by remember { mutableStateOf(false) }
     var showAddNewAnimalsDialog by remember { mutableStateOf(false) }
     var popupMessage by remember { mutableStateOf<String?>(null) }
-    var existingAnimalDetails by remember { mutableStateOf<List<Animal>>(emptyList()) }
+    var existingAnimalDetails by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
     var isLoadingDetails by remember { mutableStateOf(true) }
     var isShowingNotRead by remember { mutableStateOf(false) }
     var notReadAnimalIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    var allAnimals by remember { mutableStateOf<List<Animal>>(emptyList()) }
-
+    var allAnimals by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
+    var newAnimalIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showSaveSessionDialog by remember { mutableStateOf(false) }
 
     // Selection checkboxes state
     var selectAllPresent by remember { mutableStateOf(false) }
     var selectAllNew by remember { mutableStateOf(false) }
 
-    LaunchedEffect(token) {
+    LaunchedEffect(token, readAnimalIds) {
         try {
                 val response = RetrofitClient.apiService.getAnimalsByOwnerId("Bearer $token")
                 if (response.isSuccessful) {
                     allAnimals = response.body() ?: emptyList()
+                    val allAnimalIds = allAnimals.map { it.id }.toSet()
+                    newAnimalIds = readAnimalIds.filterNot { allAnimalIds.contains(it) }
                     notReadAnimalIds = allAnimals.map { it.id }.filterNot { readAnimalIds.contains(it) }
                 }
         } catch (e: Exception) {
@@ -52,7 +71,7 @@ fun ReadAnimalsScreen(
     }
 
     // Update animal details based on current view
-    LaunchedEffect(isShowingNotRead, allAnimals, readAnimalIds) {
+    LaunchedEffect(isShowingNotRead, allAnimals, readAnimalIds, newAnimalIds) {
         isLoadingDetails = true
         try {
             if (isShowingNotRead) {
@@ -78,18 +97,55 @@ fun ReadAnimalsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.logo),
+                            contentDescription = "HerdID Logo",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clickable { navController.navigate("home/$token") },
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
                     Text(
                         if (isShowingNotRead) "Not Read Animals (${notReadAnimalIds.size})" 
                         else "Read Animals (${readAnimalIds.size})"
-                    ) 
+                    )
+                        }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
+                    IconButton(onClick = {
+                        val previousRoute = navController.previousBackStackEntry?.destination?.route
+                        if (previousRoute?.startsWith("sessions") == true) {
+                            scope.launch {
+                                try {
+                                    val response = RetrofitClient.apiService.getAnimalsByOwnerId("Bearer $token")
+                                    if (response.isSuccessful) {
+                                        val animalIds = response.body()?.map { it.id } ?: emptyList()
+                                        val existingAnimalIdsString = animalIds.joinToString(",")
+                                        navController.navigate("camera/$token/$existingAnimalIdsString")
+                                    } else {
+                                        navController.popBackStack()
+                                    }
+                                } catch (e: Exception) {
+                                    navController.popBackStack()
+                                }
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    }) {
                         Icon(Icons.Default.ArrowBack, "Back")
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        navController.navigate("home/$token") {
+                            popUpTo("home/$token") { inclusive = true }
+                        }
+                    }) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = "Exit")
+                    }
                     IconButton(
                         onClick = { 
                             isShowingNotRead = !isShowingNotRead
@@ -330,10 +386,51 @@ fun ReadAnimalsScreen(
                     Spacer(Modifier.width(8.dp))
                     Text("Delete Selected")
                 }
+
+                if (isEditing) {
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                try {
+                                    val request = CountingSessionRequest(
+                                        name = sessionName ?: "Unnamed", // Should have name if editing
+                                        folderId = null,
+                                        readAnimalIds = readAnimalIds
+                                    )
+                                    val response = RetrofitClient.apiService.updateCountingSession(sessionId!!, "Bearer $token", request)
+                                    if (response.isSuccessful) {
+                                        popupMessage = "Session updated successfully."
+                                        cameraViewModel.updateInitialState()
+                                    } else {
+                                        popupMessage = "Failed to update session: ${response.message()}"
+                                    }
+                                } catch (e: Exception) {
+                                    popupMessage = "Error: ${e.message}"
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        enabled = isModified
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Update Session")
+                    }
+                } else {
+                    Button(
+                        onClick = { showSaveSessionDialog = true },
+                        modifier = Modifier.weight(1f),
+                        enabled = readAnimalIds.isNotEmpty()
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("Save Session")
+                    }
+                }
             }
 
             // Update checkbox states when selection changes
-            LaunchedEffect(selectedAnimals, isShowingNotRead) {
+            LaunchedEffect(selectedAnimals, isShowingNotRead, newAnimalIds) {
                 if (isShowingNotRead) {
                     selectAllPresent = notReadAnimalIds.isNotEmpty() && selectedAnimals.containsAll(notReadAnimalIds)
                     selectAllNew = false
@@ -375,6 +472,39 @@ fun ReadAnimalsScreen(
             onSuccess = {
                 popupMessage = "Event added successfully"
                 showEventDialog = false
+            }
+        )
+    }
+
+    if (showSaveSessionDialog) {
+        SaveSessionDialog(
+            onDismiss = { showSaveSessionDialog = false },
+            onSave = { newSessionName ->
+                scope.launch {
+                    try {
+                        val request = CountingSessionRequest(
+                            name = newSessionName,
+                            folderId = null,
+                            readAnimalIds = readAnimalIds
+                        )
+                        val response = RetrofitClient.apiService.saveCountingSession("Bearer $token", request)
+                        if (response.isSuccessful) {
+                            val savedSession = response.body()
+                            if (savedSession != null && savedSession.id.isNotBlank()) {
+                                popupMessage = "Session '$newSessionName' saved successfully."
+                                showSaveSessionDialog = false
+                                cameraViewModel.setSessionIdAndName(savedSession.id, newSessionName)
+                                cameraViewModel.updateInitialState()
+                            } else {
+                                popupMessage = "Failed to save session: Server did not return a session object."
+                            }
+                        } else {
+                            popupMessage = "Failed to save session: ${response.message()}"
+                        }
+                    } catch (e: Exception) {
+                        popupMessage = "Error: ${e.message}"
+                    }
+                }
             }
         )
     }
@@ -612,78 +742,3 @@ fun FolderSelectionDialog(
     }
 }
 
-@Composable
-fun EventDialog(
-    token: String,
-    animalIds: List<String>,
-    onDismiss: () -> Unit,
-    onSuccess: () -> Unit
-) {
-    var eventDetails by remember { mutableStateOf<String>("") }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    var isLoading by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Event") },
-        text = {
-            Column {
-                if (errorMessage != null) {
-                    Text(
-                        text = errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-                OutlinedTextField(
-                    value = eventDetails,
-                    onValueChange = { eventDetails = it },
-                    label = { Text("Event Details") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End
-            ) {
-                TextButton(
-                    onClick = onDismiss
-                ) {
-                    Text("Cancel")
-                }
-                Spacer(modifier = Modifier.width(8.dp))
-                Button(
-                    onClick = {
-                        if (eventDetails.isNotBlank()) {
-                            scope.launch {
-                                try {
-                                    isLoading = true
-                                    // For simplicity, creating a basic event object
-                                    val event = mapOf("details" to eventDetails)
-                                    animalIds.forEach { animalId ->
-                                        RetrofitClient.apiService.postEvent(
-                                            animalId = animalId,
-                                            token = "Bearer $token",
-                                            event = event
-                                        )
-                                    }
-                                    onSuccess()
-                                } catch (e: Exception) {
-                                    errorMessage = "Error adding event: ${e.message}"
-                                } finally {
-                                    isLoading = false
-                                }
-                            }
-                        }
-                    },
-                    enabled = eventDetails.isNotBlank() && animalIds.isNotEmpty()
-                ) {
-                    Text("Add Event")
-                }
-            }
-        }
-    )
-} 

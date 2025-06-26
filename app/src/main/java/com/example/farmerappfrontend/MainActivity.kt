@@ -12,15 +12,13 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 
 import androidx.compose.foundation.layout.*
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
 
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import com.example.farmerappfrontend.ui.theme.FarmerAppFrontendTheme
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 
 class MainActivity : ComponentActivity() {
@@ -38,30 +36,26 @@ class MainActivity : ComponentActivity() {
 fun MyApp() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val token = TokenManager.getToken(context)
 
-    var isValidUser by remember { mutableStateOf(false) }
-    var isCheckingValidity by remember { mutableStateOf(true) }
+    var startDestination by remember { mutableStateOf<String?>(null) }
+    val cameraViewModel: CameraViewModel = viewModel()
+    val folderCameraViewModel: FolderCameraViewModel = viewModel()
 
-    // Validate token and user profile
     LaunchedEffect(Unit) {
+        val token = TokenManager.getToken(context)
         if (token != null) {
             try {
-                val userProfile = RetrofitClient.apiService.getUserProfile("Bearer $token")
-                isValidUser = userProfile != null
+                RetrofitClient.apiService.getUserProfile("Bearer $token")
+                startDestination = "home/$token"
             } catch (e: Exception) {
-                isValidUser = false
-            } finally {
-                isCheckingValidity = false
+                startDestination = "login"
             }
         } else {
-            isValidUser = false
-            isCheckingValidity = false
+            startDestination = "login"
         }
     }
 
-    // Show loading indicator while validating
-    if (isCheckingValidity) {
+    if (startDestination == null) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -71,7 +65,7 @@ fun MyApp() {
     } else {
         NavHost(
             navController = navController,
-            startDestination = if (isValidUser) "home/$token" else "login"
+            startDestination = startDestination!!
         ) {
             composable("login") {
                 LoginScreen(
@@ -107,16 +101,15 @@ fun MyApp() {
                     onLogout = {
                         TokenManager.removeToken(context)
                         navController.navigate("login") {
-                            popUpTo("home") { inclusive = true }
+                            popUpTo(0) { inclusive = true }
                         }
                     },
                     navController = navController
                 )
             }
-            composable("animals") { backStackEntry ->
-                if (token != null) {
-                    AnimalListScreen(token = token, navController = navController)
-                }
+            composable("animals/{token}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                AnimalListScreen(token = token, navController = navController, cameraViewModel = cameraViewModel)
             }
 
             composable("camera/{token}/{existingAnimalIds}") { backStackEntry ->
@@ -128,29 +121,30 @@ fun MyApp() {
                 CameraScreen(
                     token = token,
                     navController = navController,
-                    existingAnimalIds = existingAnimalIds
+                    existingAnimalIds = existingAnimalIds,
+                    cameraViewModel = cameraViewModel
                 )
             }
-            composable("fileUpload/$token")
+            composable("fileUpload/{token}")
             {
                 backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
                 AddAnimalsScreen(token=token,navController=navController)
             }
-            composable("files") {
-                FilesScreen(navController)
+            composable("files/{token}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                FilesScreen(navController, token)
             }
 
-            composable("folder/{folderId}/animals") { backStackEntry ->
+            composable("folder/{folderId}/animals/{token}") { backStackEntry ->
                 val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
-
-                if (token != null) {
-                    AnimalListScreenByFolder(
-                        token = token,
-                        folderId = folderId,
-                        navController=navController
-                    )
-                }
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                AnimalListScreenByFolder(
+                    token = token,
+                    folderId = folderId,
+                    navController = navController,
+                    folderCameraViewModel = folderCameraViewModel
+                )
             }
             composable("countAnimals/{token}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
@@ -189,36 +183,51 @@ fun MyApp() {
                 }
             }
 
-            composable("readAnimals/{token}/{readAnimalIds}/{newAnimalIds}") { backStackEntry ->
+            composable("readAnimals/{token}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
-                val readAnimalIds = backStackEntry.arguments?.getString("readAnimalIds")?.split(",") ?: emptyList()
-                val newAnimalIds = backStackEntry.arguments?.getString("newAnimalIds")?.split(",") ?: emptyList()
-
                 ReadAnimalsScreen(
                     token = token,
-                    readAnimalIds = readAnimalIds,
-                    newAnimalIds = newAnimalIds,
-                    navController = navController
+                    navController = navController,
+                    cameraViewModel = cameraViewModel
                 )
             }
 
-
-
-            composable("statistics") { backStackEntry ->
-                StatisticsScreen(navController = navController)
+            composable("statistics/{token}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                StatisticsScreen(
+                    navController = navController,
+                    token = token
+                )
             }
 
+            composable("sessions/{token}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                SessionsScreen(
+                    navController = navController,
+                    cameraViewModel = cameraViewModel,
+                    folderCameraViewModel = folderCameraViewModel
+
+                )
+            }
+
+            composable("transfers/{token}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                TransfersScreen(navController = navController, token = token)
+            }
+            composable("createTransfer/{token}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                CreateTransferScreen(navController = navController, token = token)
+            }
             composable("addSingleAnimal/{token}/{animalId}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
                 val animalId = backStackEntry.arguments?.getString("animalId") ?: ""
                 AddSingleAnimalScreen(token = token, animalId = animalId, navController = navController)
             }
 
-            composable("animalDetails/{animalId}") { backStackEntry ->
+            composable("animalDetails/{animalId}/{token}") { backStackEntry ->
                 val animalId = backStackEntry.arguments?.getString("animalId") ?: ""
-                if (token != null) {
-                    AnimalDetailsScreen(animalId = animalId, token = token, navController = navController)
-                }
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                AnimalDetailsScreen(animalId = animalId, token = token, navController = navController)
             }
 
             composable("folderCamera/{token}/{folderId}?existingAnimalIds={existingAnimalIds}") { backStackEntry ->
@@ -229,20 +238,24 @@ fun MyApp() {
                     token = token,
                     folderId = folderId,
                     navController = navController,
-                    existingAnimalIds = existingAnimalIds
+                    existingAnimalIds = existingAnimalIds,
+                    folderCameraViewModel = folderCameraViewModel
                 )
             }
 
-            composable("folderReadAnimals/{token}/{folderId}?scannedAnimalIds={scannedAnimalIds}") { backStackEntry ->
+            composable("folderReadAnimals/{token}/{folderId}") { backStackEntry ->
                 val token = backStackEntry.arguments?.getString("token") ?: ""
                 val folderId = backStackEntry.arguments?.getString("folderId") ?: ""
-                val scannedAnimalIds = backStackEntry.arguments?.getString("scannedAnimalIds")?.split(",") ?: emptyList()
                 FolderReadAnimalsScreen(
                     token = token,
                     folderId = folderId,
                     navController = navController,
-                    scannedAnimalIds = scannedAnimalIds
+                    folderCameraViewModel = folderCameraViewModel
                 )
+            }
+            composable("createTransfer/{token}") { backStackEntry ->
+                val token = backStackEntry.arguments?.getString("token") ?: ""
+                CreateTransferScreen(navController = navController, token = token)
             }
         }
     }

@@ -3,6 +3,8 @@ package com.example.farmerappfrontend
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +21,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +53,23 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
     var isUpdating by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+
+    var showFilters by remember { mutableStateOf(false) }
+    var selectedEventType by remember { mutableStateOf("") }
+    var filterStartDate by remember { mutableStateOf("") }
+    var filterEndDate by remember { mutableStateOf("") }
+    var expanded by remember { mutableStateOf(false) }
+    // Tipuri distincte de evenimente pentru dropdown
+    val eventTypes = animalEvents.map { it.eventType }.distinct().sorted()
+
+    var selectedEventIds by remember { mutableStateOf(setOf<String>()) }
+
+    // Filtrare evenimente
+    val filteredEvents = animalEvents.filter { event ->
+        (selectedEventType.isEmpty() || event.eventType == selectedEventType) &&
+        (filterStartDate.isEmpty() || event.eventDate >= filterStartDate) &&
+        (filterEndDate.isEmpty() || event.eventDate <= filterEndDate)
+    }
 
     LaunchedEffect(animalId) {
         scope.launch {
@@ -104,20 +124,65 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Animal Info", color = Color.White) },
+                title = {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = "HerdID Logo",
+                        modifier = Modifier.size(40.dp).
+                        clickable{navController.navigate("home/$token")}
+                    )
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color(0xFF6650a4))
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
         bottomBar = {
-            Button(
-                onClick = { showEventDialog = true },
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6650a4))
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text("Add Event", color = Color.White)
+                Button(
+                    onClick = { showEventDialog = true },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6650a4)),
+                    elevation = ButtonDefaults.buttonElevation(8.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add Event", color = Color.White)
+                }
+                Button(
+                    onClick = {
+                        scope.launch {
+                            try {
+                                val response = RetrofitClient.apiService.deleteEventsBulk(
+                                    selectedEventIds.toList(),
+                                    "Bearer $token"
+                                )
+                                if (response.isSuccessful) {
+                                    animalEvents = animalEvents.filter { it.id !in selectedEventIds }
+                                    selectedEventIds = emptySet()
+                                    val msg = response.body()?.string() ?: "The events were succesfuly deleted."
+                                    snackbarHostState.showSnackbar(msg)
+                                } else {
+                                    snackbarHostState.showSnackbar("Error: ${response.message()}")
+                                }
+                            } catch (e: Exception) {
+                                snackbarHostState.showSnackbar("Error: ${e.message}")
+                            }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE53935)),
+                    enabled = selectedEventIds.isNotEmpty(),
+                    elevation = ButtonDefaults.buttonElevation(8.dp)
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Delete", color = Color.White)
+                }
             }
         }
     ) { innerPadding ->
@@ -128,106 +193,247 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                Text("Animal ID: ${it.id}", fontWeight = FontWeight.Bold)
-
-                // Species dropdown
-                ExposedDropdownMenuBox(
-                    expanded = speciesExpanded,
-                    onExpandedChange = { speciesExpanded = !speciesExpanded }
-                ) {
-                    OutlinedTextField(
-                        value = speciesOptions.find { opt -> opt.first == tempSpecies }?.second ?: tempSpecies,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Species") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = speciesExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
+                // Card principal cu gradient, iconițe și câmpuri editabile direct
+                Card(
+                    shape = RoundedCornerShape(18.dp),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 18.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.Transparent
                     )
-                    ExposedDropdownMenu(
-                        expanded = speciesExpanded,
-                        onDismissRequest = { speciesExpanded = false }
-                    ) {
-                        speciesOptions.forEach { (value, label) ->
-                            DropdownMenuItem(
-                                text = { Text(label) },
-                                onClick = {
-                                    tempSpecies = value
-                                    speciesExpanded = false
-                                }
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(Color(0xFFB39DDB), Color(0xFFD1C4E9))
+                                )
                             )
+                            .padding(20.dp)
+                    ) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                                Spacer(Modifier.width(8.dp))
+                                Text("ID: ", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                                Text(it.id, fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color(0xFF5E35B1))
+                            }
+                            Spacer(Modifier.height(10.dp))
+                            // Specie dropdown
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                                Spacer(Modifier.width(8.dp))
+                                Text("Specie: ", fontWeight = FontWeight.SemiBold)
+                                Box(Modifier.weight(1f)) {
+                                    ExposedDropdownMenuBox(
+                                        expanded = speciesExpanded,
+                                        onExpandedChange = { speciesExpanded = !speciesExpanded }
+                                    ) {
+                                        OutlinedTextField(
+                                            value = speciesOptions.find { opt -> opt.first == tempSpecies }?.second ?: tempSpecies,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = null,
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = speciesExpanded) },
+                                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = speciesExpanded,
+                                            onDismissRequest = { speciesExpanded = false }
+                                        ) {
+                                            speciesOptions.forEach { (value, label) ->
+                                                DropdownMenuItem(
+                                                    text = { Text(label) },
+                                                    onClick = {
+                                                        tempSpecies = value
+                                                        speciesExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            // Sex dropdown
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                                Spacer(Modifier.width(8.dp))
+                                Text("Sex: ", fontWeight = FontWeight.SemiBold)
+                                Box(Modifier.weight(1f)) {
+                                    ExposedDropdownMenuBox(
+                                        expanded = genderExpanded,
+                                        onExpandedChange = { genderExpanded = !genderExpanded }
+                                    ) {
+                                        OutlinedTextField(
+                                            value = tempGender,
+                                            onValueChange = {},
+                                            readOnly = true,
+                                            label = null,
+                                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = genderExpanded) },
+                                            modifier = Modifier.menuAnchor().fillMaxWidth()
+                                        )
+                                        ExposedDropdownMenu(
+                                            expanded = genderExpanded,
+                                            onDismissRequest = { genderExpanded = false }
+                                        ) {
+                                            listOf("M", "F").forEach { gender ->
+                                                DropdownMenuItem(
+                                                    text = { Text(gender) },
+                                                    onClick = {
+                                                        tempGender = gender
+                                                        genderExpanded = false
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            // Data nasterii
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+
+                                Spacer(Modifier.width(8.dp))
+                                Text("Data nasterii: ", fontWeight = FontWeight.SemiBold)
+                                OutlinedTextField(
+                                    value = tempBirthDate,
+                                    onValueChange = { tempBirthDate = it },
+                                    label = null,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            Spacer(Modifier.height(8.dp))
+                            // Produce lapte
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Spacer(Modifier.width(8.dp))
+                                Text("Produce lapte: ", fontWeight = FontWeight.SemiBold)
+                                Switch(checked = tempProducesMilk, onCheckedChange = { tempProducesMilk = it })
+                            }
                         }
                     }
                 }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Gender dropdown
-                ExposedDropdownMenuBox(
-                    expanded = genderExpanded,
-                    onExpandedChange = { genderExpanded = !genderExpanded }
-                ) {
-                    OutlinedTextField(
-                        value = tempGender,
-                        onValueChange = {},
-                        readOnly = true,
-                        label = { Text("Gender") },
-                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = genderExpanded) },
-                        modifier = Modifier.menuAnchor().fillMaxWidth()
-                    )
-                    ExposedDropdownMenu(
-                        expanded = genderExpanded,
-                        onDismissRequest = { genderExpanded = false }
-                    ) {
-                        listOf("M", "F").forEach { gender ->
-                            DropdownMenuItem(
-                                text = { Text(gender) },
-                                onClick = {
-                                    tempGender = gender
-                                    genderExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Birthdate field
-                OutlinedTextField(
-                    value = tempBirthDate,
-                    onValueChange = { tempBirthDate = it },
-                    label = { Text("Birth Date (yyyy-MM-dd)") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text("Produces Milk")
-                    Switch(checked = tempProducesMilk, onCheckedChange = { tempProducesMilk = it })
-                }
-
-                Spacer(modifier = Modifier.height(24.dp))
-
+                // Buton de salvare sub card
                 Button(
                     onClick = { updateAnimal() },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = !isUpdating
+                    enabled = !isUpdating,
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1)),
+                    elevation = ButtonDefaults.buttonElevation(6.dp)
                 ) {
-                    Text("Update Animal")
+                    Icon(Icons.Default.Save, contentDescription = null, tint = Color.White)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Salveaza modificarile", color = Color.White)
                 }
-
                 Spacer(modifier = Modifier.height(16.dp))
-
                 if (animalEvents.isNotEmpty()) {
-                    Text("Animal Events", fontWeight = FontWeight.Bold)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text("Evenimente animal", fontWeight = FontWeight.Bold, fontSize = 16.sp, color = Color(0xFF6650a4))
+                        Button(
+                            onClick = { showFilters = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF7E57C2)),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
+                        ) {
+                            Icon(Icons.Default.FilterList, contentDescription = null, tint = Color.White)
+                            Spacer(Modifier.width(6.dp))
+                            Text("Show Filters", color = Color.White)
+                        }
+                    }
+                    if (showFilters) {
+                        AlertDialog(
+                            onDismissRequest = { showFilters = false },
+                            title = { Text("Filtrează evenimentele") },
+                            text = {
+                                Column(Modifier.fillMaxWidth()) {
+                                    // Dropdown tip eveniment
+                                    Text("Tip eveniment:", fontWeight = FontWeight.SemiBold)
+                                    var typeDropdownExpanded by remember { mutableStateOf(false) }
+                                    OutlinedTextField(
+                                        value = selectedEventType,
+                                        onValueChange = {},
+                                        readOnly = true,
+                                        label = { Text("Alege tipul") },
+                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeDropdownExpanded) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable { typeDropdownExpanded = !typeDropdownExpanded }
+                                    )
+                                    DropdownMenu(
+                                        expanded = typeDropdownExpanded,
+                                        onDismissRequest = { typeDropdownExpanded = false }
+                                    ) {
+                                        DropdownMenuItem(
+                                            text = { Text("Toate") },
+                                            onClick = {
+                                                selectedEventType = ""
+                                                typeDropdownExpanded = false
+                                            }
+                                        )
+                                        eventTypes.forEach { type ->
+                                            DropdownMenuItem(
+                                                text = { Text(type.capitalize()) },
+                                                onClick = {
+                                                    selectedEventType = type
+                                                    typeDropdownExpanded = false
+                                                }
+                                            )
+                                        }
+                                    }
+                                    Spacer(Modifier.height(8.dp))
+                                    // Data inceput
+                                    OutlinedTextField(
+                                        value = filterStartDate,
+                                        onValueChange = { filterStartDate = it },
+                                        label = { Text("Data inceput (YYYY-MM-DD)") },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Spacer(Modifier.height(8.dp))
+                                    // Data sfarsit
+                                    OutlinedTextField(
+                                        value = filterEndDate,
+                                        onValueChange = { filterEndDate = it },
+                                        label = { Text("Data sfarsit (YYYY-MM-DD)") },
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            },
+                            confirmButton = {
+                                Button(
+                                    onClick = { showFilters = false },
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5E35B1))
+                                ) {
+                                    Text("Aplică filtrele", color = Color.White)
+                                }
+                            },
+                            dismissButton = {
+                                OutlinedButton(
+                                    onClick = {
+                                        selectedEventType = ""
+                                        filterStartDate = ""
+                                        filterEndDate = ""
+                                    }
+                                ) {
+                                    Text("Resetează")
+                                }
+                            }
+                        )
+                    }
                     Spacer(modifier = Modifier.height(8.dp))
-                    animalEvents.sortedByDescending { it.eventDate }.forEach {
-                        EventCard(it)
+                    filteredEvents.sortedByDescending { it.eventDate }.forEach { event ->
+                        EventCard(
+                            event = event,
+                            selected = selectedEventIds.contains(event.id),
+                            onClick = {
+                                selectedEventIds = if (selectedEventIds.contains(event.id))
+                                    selectedEventIds - event.id else selectedEventIds + event.id
+                            }
+                        )
                         Spacer(modifier = Modifier.height(4.dp))
                     }
                 }
@@ -255,39 +461,32 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
     }
 }
 
+
+
 @Composable
-fun InfoCard(label: String, value: String?, onClick: (() -> Unit)? = null) {
+fun EventCard(event: AnimalEvent, selected: Boolean = false, onClick: (() -> Unit)? = null) {
     Card(
         shape = RoundedCornerShape(12.dp),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text(label, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.primary)
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(value ?: "Not Available", fontSize = 16.sp)
-        }
-    }
-}
-
-@Composable
-fun EventCard(event: AnimalEvent) {
-    Card(
-        shape = RoundedCornerShape(10.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 4.dp)
+            .then(if (onClick != null) Modifier.clickable { onClick() } else Modifier),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) Color(0xFFD1C4E9) else Color(0xFFF3E5F5)
+        ),
+        border = if (selected) BorderStroke(2.dp, Color(0xFF7E57C2)) else null
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Type: ${event.eventType}", fontWeight = FontWeight.SemiBold)
-            Text("Date: ${event.eventDate}")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Default.Event, contentDescription = null, tint = Color(0xFF7E57C2))
+                Spacer(Modifier.width(8.dp))
+                Text("Tip: ", fontWeight = FontWeight.SemiBold)
+                Text(event.eventType.capitalize(), fontWeight = FontWeight.Medium, color = Color(0xFF7E57C2))
+            }
+            Text("Data: ${event.eventDate}", fontWeight = FontWeight.Light)
             Spacer(modifier = Modifier.height(6.dp))
-            Text("Details:", fontWeight = FontWeight.Medium)
+            Text("Detalii:", fontWeight = FontWeight.Medium)
             event.details.forEach { (key, value) ->
                 Text("$key: $value")
             }

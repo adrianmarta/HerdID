@@ -1,6 +1,17 @@
 package com.example.farmerappfrontend
 
+import android.annotation.SuppressLint
+import android.content.Context
+import androidx.compose.foundation.clickable
 import android.graphics.Color as AndroidColor
+import android.net.Uri
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
+import androidx.browser.trusted.Token
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -8,12 +19,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -26,10 +39,12 @@ import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import kotlinx.coroutines.launch
 import com.github.mikephil.charting.charts.BarChart as MPBarChart
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun StatisticsScreen(navController: NavController) {
+fun StatisticsScreen(navController: NavController,token:String) {
     val context = LocalContext.current
     val token = TokenManager.getToken(context)
     var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
@@ -44,17 +59,18 @@ fun StatisticsScreen(navController: NavController) {
         topBar = {
             TopAppBar(
                 title = {
-                    Text(
-                        text = "Statistics",
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = Color.White
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.Folder, contentDescription = "Back", tint = Color.White)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.logo),
+                            contentDescription = "HerdID Logo",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clickable { navController.navigate("home/$token") },
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Statistics")
                     }
-                },
+                    },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color(customPurple),
                     titleContentColor = Color.White
@@ -67,7 +83,8 @@ fun StatisticsScreen(navController: NavController) {
             Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
             FolderDropdown(
@@ -84,6 +101,7 @@ fun StatisticsScreen(navController: NavController) {
         }
     }
 
+    // Fetch folders on mount
     LaunchedEffect(token) {
         if (token.isNullOrBlank()) {
             errorMessage = "Authentication token not found"
@@ -101,6 +119,7 @@ fun StatisticsScreen(navController: NavController) {
         }
     }
 
+    // Fetch statistics when token or selectedFolder changes
     LaunchedEffect(token, selectedFolder) {
         if (token.isNullOrBlank()) return@LaunchedEffect
         isLoading = true
@@ -131,7 +150,7 @@ fun StatisticsScreen(navController: NavController) {
 fun FolderDropdown(folders: List<Folder>, selectedFolder: Folder?, onFolderSelected: (Folder?) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text("Folder:")
+        Text("Folder")
         Spacer(Modifier.width(8.dp))
         Box {
             OutlinedButton(onClick = { expanded = true }) {
@@ -168,11 +187,8 @@ fun ErrorState(message: String) {
 
 @Composable
 fun StatisticsContent(stats: StatisticsResponse) {
-    val total = stats.totalAnimalCount
-    val scrollState = rememberScrollState()
-
     Column(
-        modifier = Modifier.fillMaxSize().verticalScroll(scrollState).padding(16.dp),
+        modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(24.dp)
     ) {
         Card(
@@ -181,8 +197,8 @@ fun StatisticsContent(stats: StatisticsResponse) {
         ) {
             Column(Modifier.padding(16.dp)) {
                 Text("Milk Production", fontWeight = FontWeight.Bold)
-                Text("Producers: ${stats.milkProducerCount} / $total")
-                MPAndroidPieChart(milkProducers = stats.milkProducerCount, total = total)
+                Text("Producers: ${stats.milkProducerCount} / ${stats.totalAnimalCount}")
+                MPAndroidPieChart(milkProducers = stats.milkProducerCount, total = stats.totalAnimalCount)
             }
         }
 
@@ -225,7 +241,7 @@ fun MPAndroidPieChart(milkProducers: Int, total: Int) {
                     PieEntry((total - milkProducers).toFloat(), "No Milk")
                 )
                 val dataSet = PieDataSet(entries, "").apply {
-                    colors = listOf(AndroidColor.GREEN, AndroidColor.RED)
+                    colors = listOf(AndroidColor.BLUE, AndroidColor.RED)
                     valueTextColor = AndroidColor.WHITE
                     valueTextSize = 14f
                 }

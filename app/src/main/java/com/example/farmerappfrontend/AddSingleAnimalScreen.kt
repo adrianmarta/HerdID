@@ -2,6 +2,7 @@ package com.example.farmerappfrontend
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -13,6 +14,10 @@ import androidx.navigation.NavController
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.ui.text.TextRange
+
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.TextFieldValue
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -105,12 +110,81 @@ fun AddSingleAnimalScreen(
                 }
             }
 
-            OutlinedTextField(value = birthDate, onValueChange = { birthDate = it }, label = { Text("Birth Date") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = gender, onValueChange = { gender = it }, label = { Text("Gender (M/F)") }, modifier = Modifier.fillMaxWidth())
+            // Birth Date with auto-formatting and numeric keyboard (like FileUploadScreen)
+            var birthDateField by remember { mutableStateOf(TextFieldValue(birthDate)) }
+            OutlinedTextField(
+                value = birthDateField,
+                onValueChange = { input ->
+                    val currentDigits = birthDateField.text.filter { it.isDigit() }
+                    val newDigits = input.text.filter { it.isDigit() }
+                    val digits = if (newDigits.length < currentDigits.length) {
+                        newDigits
+                    } else {
+                        newDigits.take(8)
+                    }
+                    val formatted = buildString {
+                        digits.forEachIndexed { index, char ->
+                            if (index == 4 || index == 6) append('-')
+                            append(char)
+                        }
+                    }
+                    birthDateField = TextFieldValue(
+                        text = formatted,
+                        selection = TextRange(formatted.length)
+                    )
+                    birthDate = formatted
+                },
+                label = { Text("Birth Date (YYYY-MM-DD)") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            )
 
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("Produces Milk", modifier = Modifier.weight(1f))
-                Switch(checked = producesMilk, onCheckedChange = { producesMilk = it })
+            // Gender dropdown
+            var genderExpanded by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = genderExpanded,
+                onExpandedChange = { genderExpanded = !genderExpanded },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                OutlinedTextField(
+                    value = if (gender == "M") "M" else if (gender == "F") "F" else "",
+                    onValueChange = {},
+                    readOnly = true,
+                    label = { Text("Gender") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = genderExpanded) },
+                    colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(),
+                    modifier = Modifier.menuAnchor().fillMaxWidth()
+                )
+                DropdownMenu(
+                    expanded = genderExpanded,
+                    onDismissRequest = { genderExpanded = false },
+                    modifier = Modifier.exposedDropdownSize()
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("F") },
+                        onClick = {
+                            gender = "F"
+                            genderExpanded = false
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = { Text("M") },
+                        onClick = {
+                            gender = "M"
+                            producesMilk = false // always false for M
+                            genderExpanded = false
+                        }
+                    )
+                }
+            }
+
+            // Produces Milk switch only if gender is F
+            if (gender == "F") {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("Produces Milk", modifier = Modifier.weight(1f))
+                    Switch(checked = producesMilk, onCheckedChange = { producesMilk = it })
+                }
             }
 
             Button(
@@ -129,13 +203,11 @@ fun AddSingleAnimalScreen(
                                     species = specie,
                                     producesMilk = producesMilk
                                 )
-                                val response = RetrofitClient.apiService.addAnimal(token = "Bearer $token", animal = animalDetails) // Using the single addAnimal endpoint
+                                val response = RetrofitClient.apiService.addAnimal(token = "Bearer $token", animal = animalDetails)
 
                                 if (response.isSuccessful) {
                                     formSuccess = "Animal added successfully!"
                                     formError = null
-                                    // Optionally navigate back or clear the form for new entry
-                                    // navController.navigateUp()
                                 } else {
                                     formError = "Failed to add animal: ${response.message()}"
                                     formSuccess = null

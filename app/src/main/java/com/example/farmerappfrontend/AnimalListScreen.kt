@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
@@ -40,19 +41,33 @@ import java.text.SimpleDateFormat
 import java.util.*
 import com.tom_roush.pdfbox.util.Matrix
 import android.Manifest
+import android.annotation.SuppressLint
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import android.content.pm.PackageManager
 import android.net.Uri
+import androidx.compose.foundation.Image
 import java.io.OutputStream
+import androidx.compose.material3.TabRow
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.ExperimentalMaterial3Api
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import androidx.compose.material3.ScrollableTabRow
+import androidx.compose.material3.RangeSlider
+import java.time.temporal.ChronoUnit
+import androidx.compose.ui.res.painterResource
 
+@SuppressLint("NewApi")
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AnimalListScreen(token: String,  navController: NavController) {
+fun AnimalListScreen(token: String, navController: NavController, cameraViewModel: CameraViewModel) {
     val scope = rememberCoroutineScope()
-    var animals by remember { mutableStateOf<List<Animal>>(emptyList()) }
-    var filteredAnimals by remember { mutableStateOf<List<Animal>>(emptyList()) }
+    var animals by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
+    var filteredAnimals by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var selectedAnimals by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isCounting by remember { mutableStateOf(false) }
@@ -149,15 +164,123 @@ fun AnimalListScreen(token: String,  navController: NavController) {
         }
     }
 
+    var showFilterDialog by remember { mutableStateOf(false) }
+    var selectedTab by remember { mutableStateOf(0) }
+    var filterSex by remember { mutableStateOf<String?>(null) }
+    var filterBirthDateFrom by remember { mutableStateOf("") }
+    var filterBirthDateTo by remember { mutableStateOf("") }
+    var birthDateRange by remember { mutableStateOf(0f..1f) }
+    var filterSpecies by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var filterMilkYes by remember { mutableStateOf(false) }
+    var filterMilkNo by remember { mutableStateOf(false) }
+
+    // Get the date range for all animals
+    val dateRange = remember(animals) {
+        if (animals.isEmpty()) {
+            Pair(LocalDate.now(), LocalDate.now())
+        } else {
+            val dates = animals.map { LocalDate.parse(it.birthDate) }
+            Pair(dates.minOrNull() ?: LocalDate.now(), LocalDate.now())
+        }
+    }
+
+    // Convert slider value to date
+    @SuppressLint("NewApi")
+    fun sliderValueToDate(value: Float): LocalDate {
+        val daysBetween = ChronoUnit.DAYS.between(dateRange.first, dateRange.second)
+        val daysToAdd = (daysBetween * value).toLong()
+        return dateRange.first.plusDays(daysToAdd)
+    }
+
+    // Convert date to slider value
+    fun dateToSliderValue(date: LocalDate): Float {
+        val daysBetween = ChronoUnit.DAYS.between(dateRange.first, dateRange.second)
+        val daysFromStart = ChronoUnit.DAYS.between(dateRange.first, date)
+        return if (daysBetween > 0) daysFromStart.toFloat() / daysBetween else 0f
+    }
+
+    // Validate date string format
+    fun isValidDateString(dateStr: String): Boolean {
+        return try {
+            LocalDate.parse(dateStr)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    // Convert date string to slider value safely
+    fun dateStringToSliderValue(dateStr: String): Float {
+        return try {
+            val date = LocalDate.parse(dateStr)
+            dateToSliderValue(date)
+        } catch (e: Exception) {
+            0f
+        }
+    }
+
+    // Update birth date range when text inputs change
+    fun updateBirthDateRange(startDate: String, endDate: String) {
+        if (isValidDateString(startDate) && isValidDateString(endDate)) {
+            val start = dateStringToSliderValue(startDate)
+            val end = dateStringToSliderValue(endDate)
+            if (start <= end) {
+                birthDateRange = start..end
+            }
+        }
+    }
+
+    // Update filter dates when slider changes
+    LaunchedEffect(birthDateRange) {
+        filterBirthDateFrom = sliderValueToDate(birthDateRange.start).format(DateTimeFormatter.ISO_DATE)
+        filterBirthDateTo = sliderValueToDate(birthDateRange.endInclusive).format(DateTimeFormatter.ISO_DATE)
+    }
+
+    // Extrage toate speciile distincte pentru tab-ul de specie
+    val allSpecies = animals.map { it.species }.distinct().sorted()
+
+
+    fun applyFilters() {
+        filteredAnimals = animals.filter { animal ->
+            val sexOk = filterSex == null || animal.gender.equals(filterSex, ignoreCase = true)
+            val birthDateOk = (filterBirthDateFrom.isBlank() || animal.birthDate >= filterBirthDateFrom) &&
+                              (filterBirthDateTo.isBlank() || animal.birthDate <= filterBirthDateTo)
+            val speciesOk = filterSpecies.isEmpty() || filterSpecies.contains(animal.species)
+            val milkOk = when {
+                filterMilkYes && !filterMilkNo -> animal.producesMilk == true
+                !filterMilkYes && filterMilkNo -> animal.producesMilk == false
+                filterMilkYes && filterMilkNo -> true
+                else -> true
+            }
+            sexOk && birthDateOk && speciesOk && milkOk
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Animals (${filteredAnimals.size})") },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.logo),
+                            contentDescription = "HerdID Logo",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clickable { navController.navigate("home/$token") },
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text("Animals (" + filteredAnimals.size + ")")
+                    }
+                },
                 actions = {
                     IconButton(onClick = {
+                        cameraViewModel.startNewSession()
                         navController.navigate("camera/$token/${animals.map{it.id}.joinToString(",")}")
                     }) {
                         Icon(Icons.Default.CameraAlt, contentDescription = "Open Camera")
+                    }
+                    IconButton(onClick = { showFilterDialog = true }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "Show Filters")
                     }
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(MaterialTheme.colorScheme.primary)
@@ -321,7 +444,7 @@ fun AnimalListScreen(token: String,  navController: NavController) {
                                 navController.previousBackStackEntry
                                     ?.savedStateHandle
                                     ?.set("refresh", true)
-                                navController.navigate("animalDetails/${animal.id}")
+                                navController.navigate("animalDetails/${animal.id}/${token}")
                             }) {
                                 Icon(
                                     imageVector = Icons.Default.MoreVert,
@@ -563,6 +686,158 @@ fun AnimalListScreen(token: String,  navController: NavController) {
         )
     }
 
+    // ALERT DIALOG FILTRE
+    if (showFilterDialog) {
+        AlertDialog(
+            onDismissRequest = { showFilterDialog = false },
+            title = { Text("Filters") },
+            text = {
+                Column {
+                    val tabTitles = listOf("Sex", "Birth Date", "Species", "Milk Producers")
+                    ScrollableTabRow(selectedTabIndex = selectedTab) {
+                        tabTitles.forEachIndexed { idx, title ->
+                            Tab(
+                                selected = selectedTab == idx,
+                                onClick = { selectedTab = idx },
+                                text = { Text(title) }
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    when (selectedTab) {
+                        0 -> {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = filterSex == "F",
+                                    onCheckedChange = { checked -> filterSex = if (checked) "F" else null }
+                                )
+                                Text("Female", Modifier.clickable { filterSex = if (filterSex == "F") null else "F" })
+                                Spacer(Modifier.width(16.dp))
+                                Checkbox(
+                                    checked = filterSex == "M",
+                                    onCheckedChange = { checked -> filterSex = if (checked) "M" else null }
+                                )
+                                Text("Male", Modifier.clickable { filterSex = if (filterSex == "M") null else "M" })
+                            }
+                        }
+                        1 -> { // Birth Date
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                Text(
+                                    text = "Birth Date Range",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    OutlinedTextField(
+                                        value = filterBirthDateFrom,
+                                        onValueChange = { newValue ->
+                                            filterBirthDateFrom = newValue
+                                            if (isValidDateString(newValue)) {
+                                                updateBirthDateRange(newValue, filterBirthDateTo.ifEmpty { dateRange.second.format(DateTimeFormatter.ISO_DATE) })
+                                            }
+                                        },
+                                        placeholder = { 
+                                            Text(dateRange.first.format(DateTimeFormatter.ISO_DATE))
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        singleLine = true
+                                    )
+                                    
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    
+                                    OutlinedTextField(
+                                        value = filterBirthDateTo,
+                                        onValueChange = { newValue ->
+                                            filterBirthDateTo = newValue
+                                            if (isValidDateString(newValue)) {
+                                                updateBirthDateRange(filterBirthDateFrom.ifEmpty { dateRange.first.format(DateTimeFormatter.ISO_DATE) }, newValue)
+                                            }
+                                        },
+                                        placeholder = { 
+                                            Text(dateRange.second.format(DateTimeFormatter.ISO_DATE))
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        singleLine = true
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                RangeSlider(
+                                    value = birthDateRange,
+                                    onValueChange = { birthDateRange = it },
+                                    valueRange = 0f..1f,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+                        2 -> { // Species
+                            Column {
+                                allSpecies.forEach { species ->
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Checkbox(
+                                            checked = filterSpecies.contains(species),
+                                            onCheckedChange = { checked ->
+                                                filterSpecies = if (checked) filterSpecies + species else filterSpecies - species
+                                            }
+                                        )
+                                        Text(species, Modifier.clickable {
+                                            filterSpecies = if (filterSpecies.contains(species)) filterSpecies - species else filterSpecies + species
+                                        })
+                                    }
+                                }
+                            }
+                        }
+                        3 -> { // Milk Producers
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Checkbox(
+                                    checked = filterMilkYes,
+                                    onCheckedChange = { checked -> filterMilkYes = checked }
+                                )
+                                Text("YES", Modifier.clickable { filterMilkYes = !filterMilkYes })
+                                Spacer(Modifier.width(16.dp))
+                                Checkbox(
+                                    checked = filterMilkNo,
+                                    onCheckedChange = { checked -> filterMilkNo = checked }
+                                )
+                                Text("NO", Modifier.clickable { filterMilkNo = !filterMilkNo })
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row {
+                    Button(onClick = {
+                        applyFilters()
+                        showFilterDialog = false
+                    }) { Text("Apply Filters") }
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = {
+                        filterSex = null
+                        filterBirthDateFrom = ""
+                        filterBirthDateTo = ""
+                        filterSpecies = emptySet()
+                        filterMilkYes = false
+                        filterMilkNo = false
+                        filteredAnimals = animals
+                        showFilterDialog = false
+                    }) { Text("Reset") }
+                }
+            }
+        )
+    }
+
     exportMessage?.let {
         AlertDialog(
             onDismissRequest = { exportMessage = null },
@@ -579,7 +854,7 @@ fun AnimalListScreen(token: String,  navController: NavController) {
 
 }
 
-fun loadAnimals(token: String,  onComplete: (List<Animal>) -> Unit) {
+fun loadAnimals(token: String,  onComplete: (List<AnimalDetails>) -> Unit) {
     CoroutineScope(Dispatchers.IO).launch {
         try {
             val response = RetrofitClient.apiService.getAnimalsByOwnerId( "Bearer $token")
@@ -596,7 +871,7 @@ fun loadAnimals(token: String,  onComplete: (List<Animal>) -> Unit) {
     }
 }
 
-private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<Animal>) = withContext(Dispatchers.IO) {
+private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<AnimalDetails>) = withContext(Dispatchers.IO) {
     val document = PDDocument()
 
     val margin = 50f

@@ -16,16 +16,23 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import android.util.Log
+import androidx.compose.foundation.Image
 import androidx.navigation.NavController
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.ui.text.style.TextOverflow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import com.example.farmerappfrontend.ui.components.EventDialog
+import com.example.farmerappfrontend.components.SaveSessionDialog
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.ExitToApp
+import androidx.compose.ui.res.painterResource
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -33,8 +40,19 @@ fun FolderReadAnimalsScreen(
     token: String,
     folderId: String,
     navController: NavController,
-    scannedAnimalIds: List<String>
+    folderCameraViewModel: FolderCameraViewModel
 ) {
+    val scannedAnimalIdsSet by folderCameraViewModel.scannedIds.collectAsState()
+    val initialAnimalIds by folderCameraViewModel.initialScannedIds.collectAsState()
+    val sessionId by folderCameraViewModel.sessionId.collectAsState()
+    val sessionName by folderCameraViewModel.sessionName.collectAsState()
+
+    val scannedAnimalIds = scannedAnimalIdsSet.toList()
+    val isEditing = sessionId != null
+    val isModified = remember(initialAnimalIds, scannedAnimalIdsSet) {
+        initialAnimalIds != scannedAnimalIdsSet
+    }
+
     var animalsWithStatus by remember { mutableStateOf<List<ScannedAnimalStatus>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var popupMessage by remember { mutableStateOf<String?>(null) } // For displaying messages like adding to folder result
@@ -42,12 +60,13 @@ fun FolderReadAnimalsScreen(
     var selectedAnimalIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isShowingNotRead by remember { mutableStateOf(false) }
     var notReadAnimalIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    var allAnimals by remember { mutableStateOf<List<Animal>>(emptyList()) }
+    var allAnimals by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
 
     // State for category selection checkboxes
     var selectAllInFolder by remember { mutableStateOf(false) }
     var selectAllNotInFolderExistsGlobally by remember { mutableStateOf(false) }
     var selectAllNewAnimal by remember { mutableStateOf(false) }
+    var showSaveSessionDialog by remember { mutableStateOf(false) }
 
     var showEventDialog by remember { mutableStateOf(false) } // State to control EventDialog visibility
 
@@ -68,78 +87,69 @@ fun FolderReadAnimalsScreen(
     // Update animal statuses based on current view
     LaunchedEffect(scannedAnimalIds, isShowingNotRead, allAnimals) {
         isLoading = true
-        val results = mutableListOf<ScannedAnimalStatus>()
-        
-        if (isShowingNotRead) {
-            // Show not read animals
-            for (id in notReadAnimalIds) {
-                try {
-                    val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                    if (animalDetailsResponse.isSuccessful) {
-                        results.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.IN_FOLDER))
-                    } else {
-                        results.add(ScannedAnimalStatus(id = id, status = AnimalStatus.IN_FOLDER))
-                    }
-                } catch (e: Exception) {
-                    Log.e("FolderReadAnimals", "Error processing not read ID $id: ${e.message}")
-                }
-            }
+        animalsWithStatus = if (isShowingNotRead) {
+            reloadNotReadAnimals(folderId, notReadAnimalIds, token)
         } else {
-            // Show scanned animals with their status
-            for (id in scannedAnimalIds) {
-                try {
-                    val existsGloballyResponse = RetrofitClient.apiService.checkAnimalExists(id, "Bearer $token")
-                    if (existsGloballyResponse.isSuccessful && existsGloballyResponse.body() == true) {
-                        val folderAnimalsResponse = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
-                        val isInFolder = folderAnimalsResponse.isSuccessful && (folderAnimalsResponse.body()?.any { it.id == id } == true)
-
-                        if (isInFolder) {
-                            val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                            if (animalDetailsResponse.isSuccessful) {
-                                results.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.IN_FOLDER))
-                            } else {
-                                results.add(ScannedAnimalStatus(id = id, status = AnimalStatus.IN_FOLDER))
-                            }
-                        } else {
-                            val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                            if (animalDetailsResponse.isSuccessful) {
-                                results.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY))
-                            } else {
-                                results.add(ScannedAnimalStatus(id = id, status = AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY))
-                            }
-                        }
-                    } else {
-                        results.add(ScannedAnimalStatus(id = id, status = AnimalStatus.NEW_ANIMAL))
-                    }
-                } catch (e: Exception) {
-                    Log.e("FolderReadAnimals", "Error processing scanned ID $id: ${e.message}")
-                    results.add(ScannedAnimalStatus(id = id, status = AnimalStatus.NEW_ANIMAL))
-                }
-            }
+            reloadAnimalsWithStatus(folderId, scannedAnimalIds, token)
         }
-        animalsWithStatus = results.sortedBy { it.id }
         isLoading = false
     }
+
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
-                    Text(
-                        if (isShowingNotRead) "Not Read Animals (${notReadAnimalIds.size})" 
-                        else "Scanned Animals (${scannedAnimalIds.size})",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    ) 
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.logo),
+                            contentDescription = "HerdID Logo",
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clickable { navController.navigate("home/$token") },
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            if (isShowingNotRead) "Not Read Animals (${notReadAnimalIds.size})"
+                            else "Read Animals (${scannedAnimalIds.size})"
+                        )
+                }
                 },
                 navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
+                    IconButton(onClick = {
+                        val previousRoute = navController.previousBackStackEntry?.destination?.route
+                        if (previousRoute?.startsWith("sessions") == true) {
+                            scope.launch {
+                                try {
+                                    val response = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
+                                    if (response.isSuccessful) {
+                                        val animalIds = response.body()?.map { it.id } ?: emptyList()
+                                        val existingAnimalIdsString = animalIds.joinToString(",")
+                                        navController.navigate("folderCamera/$token/$folderId?existingAnimalIds=$existingAnimalIdsString")
+                                    } else {
+                                        navController.popBackStack()
+                                    }
+                                } catch (e: Exception) {
+                                    navController.popBackStack()
+                                }
+                            }
+                        } else {
+                            navController.popBackStack()
+                        }
+                    }) {
                         Icon(Icons.Default.ArrowBack, "Back")
                     }
                 },
                 actions = {
+                    IconButton(onClick = {
+                        navController.navigate("home/$token") {
+                            popUpTo("home/$token") { inclusive = true }
+                        }
+                    }) {
+                        Icon(Icons.Default.ExitToApp, contentDescription = "Exit")
+                    }
                     IconButton(
-                        onClick = { 
+                        onClick = {
                             isShowingNotRead = !isShowingNotRead
                             selectedAnimalIds = emptySet()
                         }
@@ -173,8 +183,10 @@ fun FolderReadAnimalsScreen(
                     // Add to Folder Button
                     Button(
                         onClick = {
-                            /* TODO: Implement Add to Folder */ Log.d("FolderReadAnimals", "Add selected to folder: ${selectedAnimalIds.joinToString()}")
-                            val animalsToAdd = animalsWithStatus.filter { it.id in selectedAnimalIds && it.status == AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY }.map { it.id }
+                            val animalsToAdd = animalsWithStatus
+                                .filter { it.id in selectedAnimalIds && it.status == AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY }
+                                .map { it.id }
+
                             if (animalsToAdd.isNotEmpty()) {
                                 scope.launch {
                                     try {
@@ -185,49 +197,10 @@ fun FolderReadAnimalsScreen(
                                         )
                                         if (response.isSuccessful) {
                                             popupMessage = "Successfully added ${animalsToAdd.size} animals to folder."
-                                            selectedAnimalIds = emptySet() // Clear selection after adding
-                                            // Refresh the list to update statuses
-                                            // This will re-trigger the LaunchedEffect to fetch and update statuses
-                                            // Alternatively, manually update the status of added animals in animalsWithStatus list
-                                            // For simplicity now, let's re-fetch:
-                                            // Re-fetch animals in folder to update their status to IN_FOLDER
-                                            isLoading = true // Show loading while refetching
-                                            val updatedAnimals = mutableListOf<ScannedAnimalStatus>()
-                                            for (id in scannedAnimalIds) { // Process all scanned IDs again
-                                                try {
-                                                    val existsGloballyResponse = RetrofitClient.apiService.checkAnimalExists(id, "Bearer $token")
-                                                    if (existsGloballyResponse.isSuccessful && existsGloballyResponse.body() == true) {
-                                                        val folderAnimalsResponse = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
-                                                        val isInFolder = folderAnimalsResponse.isSuccessful && (folderAnimalsResponse.body()?.any { it.id == id } == true)
-
-                                                        if (isInFolder) {
-                                                            val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                                                            if (animalDetailsResponse.isSuccessful) {
-                                                                updatedAnimals.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.IN_FOLDER))
-                                                            } else {
-                                                                updatedAnimals.add(ScannedAnimalStatus(id = id, status = AnimalStatus.IN_FOLDER))
-                                                                Log.e("FolderReadAnimals", "Failed to fetch details for $id: ${animalDetailsResponse.message()}")
-                                                            }
-                                                        } else {
-                                                            val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                                                            if (animalDetailsResponse.isSuccessful) {
-                                                                updatedAnimals.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY))
-                                                            } else {
-                                                                updatedAnimals.add(ScannedAnimalStatus(id = id, status = AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY))
-                                                                Log.e("FolderReadAnimals", "Failed to fetch details for $id: ${animalDetailsResponse.message()}")
-                                                            }
-                                                        }
-                                                    } else {
-                                                        updatedAnimals.add(ScannedAnimalStatus(id = id, status = AnimalStatus.NEW_ANIMAL))
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Log.e("FolderReadAnimals", "Error processing scanned ID $id during refresh: ${e.message}")
-                                                    updatedAnimals.add(ScannedAnimalStatus(id = id, status = AnimalStatus.NEW_ANIMAL))
-                                                }
-                                            }
-                                            animalsWithStatus = updatedAnimals.sortedBy { it.id }
+                                            selectedAnimalIds = emptySet()
+                                            isLoading = true
+                                            animalsWithStatus = reloadAnimalsWithStatus(folderId, scannedAnimalIds, token)
                                             isLoading = false
-
                                         } else {
                                             popupMessage = "Failed to add animals to folder: ${response.message()}"
                                         }
@@ -240,12 +213,15 @@ fun FolderReadAnimalsScreen(
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        enabled = selectedAnimalIds.isNotEmpty() && animalsWithStatus.filter { it.id in selectedAnimalIds }.all { it.status == AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY } // Enabled only for NOT_IN_FOLDER_EXISTS_GLOBALLY selected
+                        enabled = selectedAnimalIds.isNotEmpty() &&
+                                animalsWithStatus.filter { it.id in selectedAnimalIds }
+                                    .all { it.status == AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY }
                     ) {
                         Icon(Icons.Default.Folder, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Add to Folder")
                     }
+
                     // Add Event Button
                     Button(
                         onClick = {
@@ -386,7 +362,7 @@ fun FolderReadAnimalsScreen(
                                     }
 
                                     // Details Icon
-                                    IconButton(onClick = { navController.navigate("animalDetails/${item.id}") }) {
+                                    IconButton(onClick = { navController.navigate("animalDetails/${item.id}/{token}") }) {
                                         Icon(
                                             imageVector = Icons.Default.MoreVert,
                                             contentDescription = "Details"
@@ -398,11 +374,11 @@ fun FolderReadAnimalsScreen(
                     }
                 }
 
-                // Bottom Action Buttons (Delete and Show Not Read)
+                // Bottom Action Buttons
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     // Delete Selected Button
                     Button(
@@ -419,52 +395,16 @@ fun FolderReadAnimalsScreen(
                                         if (response.isSuccessful) {
                                             popupMessage = "Successfully removed ${animalIdsToDelete.size} animals from folder."
                                             selectedAnimalIds = emptySet()
-                                            
-                                            // Update local state after deletion
-                                            if (isShowingNotRead) {
-                                                // Remove deleted animals from allAnimals and recalculate notReadAnimalIds
-                                                allAnimals = allAnimals.filter { it.id !in selectedAnimalIds }
-                                                notReadAnimalIds = allAnimals.map { it.id }.filterNot { scannedAnimalIds.contains(it) }
-                                            }
-                                            
+
                                             // Refresh the list
                                             isLoading = true
-                                            val updatedAnimals = mutableListOf<ScannedAnimalStatus>()
-                                            val idsToProcess = if (isShowingNotRead) notReadAnimalIds else scannedAnimalIds
-                                            
-                                            for (id in idsToProcess) {
-                                                try {
-                                                    if (isShowingNotRead) {
-                                                        val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                                                        if (animalDetailsResponse.isSuccessful) {
-                                                            updatedAnimals.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.IN_FOLDER))
-                                                        }
-                                                    } else {
-                                                        val existsGloballyResponse = RetrofitClient.apiService.checkAnimalExists(id, "Bearer $token")
-                                                        if (existsGloballyResponse.isSuccessful && existsGloballyResponse.body() == true) {
-                                                            val folderAnimalsResponse = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
-                                                            val isInFolder = folderAnimalsResponse.isSuccessful && (folderAnimalsResponse.body()?.any { it.id == id } == true)
-                                                            
-                                                            if (isInFolder) {
-                                                                val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                                                                if (animalDetailsResponse.isSuccessful) {
-                                                                    updatedAnimals.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.IN_FOLDER))
-                                                                }
-                                                            } else {
-                                                                val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
-                                                                if (animalDetailsResponse.isSuccessful) {
-                                                                    updatedAnimals.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY))
-                                                                }
-                                                            }
-                                                        } else {
-                                                            updatedAnimals.add(ScannedAnimalStatus(id = id, status = AnimalStatus.NEW_ANIMAL))
-                                                        }
-                                                    }
-                                                } catch (e: Exception) {
-                                                    Log.e("FolderReadAnimals", "Error processing ID $id during refresh: ${e.message}")
-                                                }
+                                            animalsWithStatus = if (isShowingNotRead) {
+                                                allAnimals = allAnimals.filter { it.id !in animalIdsToDelete }
+                                                notReadAnimalIds = allAnimals.map { it.id }.filterNot { scannedAnimalIds.contains(it) }
+                                                reloadNotReadAnimals(folderId, notReadAnimalIds, token)
+                                            } else {
+                                                reloadAnimalsWithStatus(folderId, scannedAnimalIds, token)
                                             }
-                                            animalsWithStatus = updatedAnimals.sortedBy { it.id }
                                             isLoading = false
                                         } else {
                                             popupMessage = "Failed to remove animals from folder: ${response.message()}"
@@ -482,6 +422,47 @@ fun FolderReadAnimalsScreen(
                         Icon(Icons.Default.Delete, contentDescription = null)
                         Spacer(Modifier.width(4.dp))
                         Text("Delete Selected")
+                    }
+
+                    if (isEditing) {
+                        Button(
+                            onClick = {
+                                scope.launch {
+                                    try {
+                                        val request = CountingSessionRequest(
+                                            name = sessionName ?: "Unnamed",
+                                            folderId = folderId,
+                                            readAnimalIds = scannedAnimalIds
+                                        )
+                                        val response = RetrofitClient.apiService.updateCountingSession(sessionId!!, "Bearer $token", request)
+                                        if (response.isSuccessful) {
+                                            popupMessage = "Session updated successfully."
+                                            folderCameraViewModel.updateInitialState()
+                                        } else {
+                                            popupMessage = "Failed to update session: ${response.message()}"
+                                        }
+                                    } catch (e: Exception) {
+                                        popupMessage = "Error: ${e.message}"
+                                    }
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            enabled = isModified
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Update Session")
+                        }
+                    } else {
+                        Button(
+                            onClick = { showSaveSessionDialog = true },
+                            modifier = Modifier.weight(1f),
+                            enabled = scannedAnimalIds.isNotEmpty()
+                        ) {
+                            Icon(Icons.Default.Save, contentDescription = null)
+                            Spacer(Modifier.width(4.dp))
+                            Text("Save Session")
+                        }
                     }
                 }
             }
@@ -502,41 +483,49 @@ fun FolderReadAnimalsScreen(
         )
     }
 
+    if (showSaveSessionDialog) {
+        SaveSessionDialog(
+            onDismiss = { showSaveSessionDialog = false },
+            onSave = { newSessionName ->
+                scope.launch {
+                    try {
+                        val request = CountingSessionRequest(
+                            name = newSessionName,
+                            folderId = folderId,
+                            readAnimalIds = scannedAnimalIds
+                        )
+                        val response = RetrofitClient.apiService.saveCountingSession("Bearer $token", request)
+                        if (response.isSuccessful) {
+                            val savedSession = response.body()
+                            if (savedSession != null && savedSession.id.isNotBlank()) {
+                                popupMessage = "Session '$newSessionName' saved successfully."
+                                showSaveSessionDialog = false
+                                folderCameraViewModel.setSessionIdAndName(savedSession.id, newSessionName)
+                                folderCameraViewModel.updateInitialState()
+                            } else {
+                                popupMessage = "Failed to save session: Server did not return a session object."
+                            }
+                        } else {
+                            popupMessage = "Failed to save session: ${response.message()}"
+                        }
+                    } catch (e: Exception) {
+                        popupMessage = "Error: ${e.message}"
+                    }
+                }
+            }
+        )
+    }
+
     // Event Dialog
     if (showEventDialog) {
-        // Pass the list of selected animal IDs to the dialog's onSave lambda
         EventDialog(
+            token = token,
+            animalIds = selectedAnimalIds.toList(),
             onDismiss = { showEventDialog = false },
-            onSave = { eventType, details ->
+            onSuccess = {
+                popupMessage = "Event posting complete."
                 showEventDialog = false
-
-                // Implement batch posting of event for selected animals
-                val eligibleAnimalIds = animalsWithStatus // Re-filter to get eligible IDs again if needed, or pass them to the dialog
-                    .filter { it.id in selectedAnimalIds && (it.status == AnimalStatus.IN_FOLDER || it.status == AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY) }
-                    .map { it.id }
-
-                scope.launch {
-                    var successfulPosts = 0
-                    var failedPosts = 0
-                    for (animalId in eligibleAnimalIds) {
-                        try {
-                            val response = RetrofitClient.apiService.postEvent(animalId, "Bearer $token", details)
-                            if (response.isSuccessful) {
-                                Log.d("FolderReadAnimalsEvent", "Event posted for $animalId")
-                                successfulPosts++
-                            } else {
-                                Log.e("FolderReadAnimalsEvent", "Failed to post event for $animalId: ${response.message()}")
-                                failedPosts++
-                            }
-                        } catch (e: Exception) {
-                            Log.e("FolderReadAnimalsEvent", "Error posting event for $animalId: ${e.message}")
-                            failedPosts++
-                        }
-                    }
-                    // Show summary popup message
-                    popupMessage = "Event posting complete: $successfulPosts successful, $failedPosts failed."
-                    selectedAnimalIds = emptySet() // Clear selection after attempting to post events
-                }
+                selectedAnimalIds = emptySet()
             }
         )
     }
@@ -552,9 +541,7 @@ suspend fun reloadAnimalsWithStatus(
             val existsGloballyResponse = RetrofitClient.apiService.checkAnimalExists(id, "Bearer $token")
             if (existsGloballyResponse.isSuccessful && existsGloballyResponse.body() == true) {
                 val folderAnimalsResponse = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
-                val isInFolder = folderAnimalsResponse.isSuccessful &&
-                        (folderAnimalsResponse.body()?.any { it.id == id } == true)
-
+                val isInFolder = folderAnimalsResponse.isSuccessful && (folderAnimalsResponse.body()?.any { it.id == id } == true)
                 val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
                 val animal = if (animalDetailsResponse.isSuccessful) animalDetailsResponse.body() else null
 
@@ -575,214 +562,27 @@ suspend fun reloadAnimalsWithStatus(
     return updatedAnimals.sortedBy { it.id }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun EventDialog(
-    onDismiss: () -> Unit,
-    onSave: (String, Map<String, Any>) -> Unit
-) {
-    var eventType by remember { mutableStateOf("") }
-    var eventDate by remember { mutableStateOf("") }
-    var field1 by remember { mutableStateOf("") }
-    var field2 by remember { mutableStateOf("") }
-    var expanded by remember { mutableStateOf(false) }
-    var eventTypes by remember { mutableStateOf<Map<String, Map<String, String>>>(emptyMap()) }
-    var isLoading by remember { mutableStateOf(true) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-    val scope = rememberCoroutineScope()
-
-    // Fetch event types when dialog opens
-    LaunchedEffect(Unit) {
+suspend fun reloadNotReadAnimals(
+    folderId: String,
+    notReadAnimalIds: List<String>,
+    token: String
+): List<ScannedAnimalStatus> {
+    val results = mutableListOf<ScannedAnimalStatus>()
+    for (id in notReadAnimalIds) {
         try {
-            val response = RetrofitClient.apiService.getEventTypes()
-            if (response.isSuccessful) {
-                eventTypes = response.body() ?: emptyMap()
-                if (eventTypes.isNotEmpty()) {
-                    eventType = eventTypes.keys.first()
-                }
+            val animalDetailsResponse = RetrofitClient.apiService.getAnimal(id, "Bearer $token")
+            if (animalDetailsResponse.isSuccessful) {
+                results.add(ScannedAnimalStatus(animalDetailsResponse.body(), id, AnimalStatus.IN_FOLDER))
             } else {
-                errorMessage = "Failed to load event types"
+                results.add(ScannedAnimalStatus(id = id, status = AnimalStatus.IN_FOLDER))
             }
         } catch (e: Exception) {
-            errorMessage = "Error loading event types: ${e.message}"
-        } finally {
-            isLoading = false
+            Log.e("reloadNotReadAnimals", "Error processing $id: ${e.message}")
+            results.add(ScannedAnimalStatus(id = id, status = AnimalStatus.IN_FOLDER))
         }
     }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Add Animal Event") },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (errorMessage != null) {
-                    Text(
-                        text = errorMessage!!,
-                        color = MaterialTheme.colorScheme.error,
-                        modifier = Modifier.padding(bottom = 8.dp)
-                    )
-                }
-
-                if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.align(Alignment.CenterHorizontally)
-                    )
-                } else {
-                    Text("Event Type:")
-                    ExposedDropdownMenuBox(
-                        expanded = expanded,
-                        onExpandedChange = { expanded = !expanded }
-                    ) {
-                        OutlinedTextField(
-                            value = eventType,
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Select Event Type") },
-                            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-                            modifier = Modifier
-                                .menuAnchor()
-                                .fillMaxWidth()
-                        )
-                        ExposedDropdownMenu(
-                            expanded = expanded,
-                            onDismissRequest = { expanded = false }
-                        ) {
-                            eventTypes.forEach { (type, details) ->
-                                DropdownMenuItem(
-                                    text = { 
-                                        Column {
-                                            Text(type.capitalize())
-                                            Text(
-                                                details["description"] ?: "",
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        eventType = type
-                                        expanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    // Show event type description
-                    eventType.takeIf { it.isNotEmpty() }?.let { type ->
-                        eventTypes[type]?.get("description")?.let { description ->
-                            Text(
-                                text = description,
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(vertical = 4.dp)
-                            )
-                        }
-                    }
-
-                    OutlinedTextField(
-                        value = eventDate,
-                        onValueChange = { eventDate = it },
-                        label = { Text("Date (YYYY-MM-DD)") }
-                    )
-
-                    when (eventType) {
-                        "vaccination" -> {
-                            OutlinedTextField(
-                                value = field1,
-                                onValueChange = { field1 = it },
-                                label = { Text("Vaccine Name") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = field2,
-                                onValueChange = { field2 = it },
-                                label = { Text("Dosage") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                        "sickness" -> {
-                            OutlinedTextField(
-                                value = field1,
-                                onValueChange = { field1 = it },
-                                label = { Text("Diagnosis") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = field2,
-                                onValueChange = { field2 = it },
-                                label = { Text("Treatment") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                        "birth" -> {
-                            OutlinedTextField(
-                                value = field1,
-                                onValueChange = { field1 = it },
-                                label = { Text("Calf Gender") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = field2,
-                                onValueChange = { field2 = it },
-                                label = { Text("Notes") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                        "death" -> {
-                            OutlinedTextField(
-                                value = field1,
-                                onValueChange = { field1 = it },
-                                label = { Text("Cause of Death") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                            OutlinedTextField(
-                                value = field2,
-                                onValueChange = { field2 = it },
-                                label = { Text("Notes") },
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val details = mutableMapOf<String, Any>()
-                    when (eventType) {
-                        "vaccination" -> {
-                            details["vaccineName"] = field1
-                            details["dosage"] = field2
-                        }
-                        "sickness" -> {
-                            details["diagnosis"] = field1
-                            details["treatment"] = field2
-                        }
-                        "birth" -> {
-                            details["calfGender"] = field1
-                            details["notes"] = field2
-                        }
-                        "death" -> {
-                            details["causeOfDeath"] = field1
-                            details["notes"] = field2
-                        }
-                    }
-                    details["eventType"] = eventType
-                    details["eventDate"] = eventDate
-                    onSave(eventType, details)
-                },
-                enabled = !isLoading && eventType.isNotEmpty() && eventDate.isNotEmpty() && 
-                         field1.isNotEmpty() && field2.isNotEmpty()
-            ) {
-                Text("Save")
-            }
-        },
-        dismissButton = {
-            Button(onClick = onDismiss) {
-                Text("Cancel")
-            }
-        }
-    )
+    return results.sortedBy { it.id }
 }
+
+
+

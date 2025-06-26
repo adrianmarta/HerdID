@@ -13,6 +13,8 @@ import retrofit2.Response
 import retrofit2.http.DELETE
 import retrofit2.http.PUT
 import retrofit2.http.Query
+import okhttp3.ResponseBody
+
 
 interface ApiService {
 
@@ -24,7 +26,7 @@ interface ApiService {
     @GET("api/animals/owner-animals")
     suspend fun getAnimalsByOwnerId(
         @Header("Authorization") token: String
-    ): Response<List<Animal>>
+    ): Response<List<AnimalDetails>>
 
 
     @DELETE("/api/animals/{id}")
@@ -51,7 +53,7 @@ interface ApiService {
     suspend fun getAnimalsByFolderId(
         @Path("folderId") folderId: String,
         @Header("Authorization") token: String
-    ): Response<List<Animal>>
+    ): Response<List<AnimalDetails>>
     @PUT("/api/folders/{folderId}/add-existing-animal/{animalId}")
     suspend fun addAnimalToFolder(
         @Path("folderId") folderId: String,
@@ -72,6 +74,13 @@ interface ApiService {
         @Header("Authorization") token: String
     ): Response<Void>
 
+    @PUT("/api/folders/{id}")
+    suspend fun renameFolder(
+        @Path("id") folderId: String,
+        @Header("Authorization") token: String,
+        @Body folderRequest: FolderRequest
+    ): Response<FolderResponse>
+
     @GET("/api/animals/exists/{id}")
     suspend fun checkAnimalExists(
         @Path("id") animalId: String,
@@ -81,12 +90,12 @@ interface ApiService {
     suspend fun getAnimalsByIds(
         @Query("ids") ids: List<String>,
         @Header("Authorization") token: String
-    ): Response<List<Animal>>
+    ): Response<List<AnimalDetails>>
 
     @PUT("/api/folders/{folderId}/remove-animals")
     suspend fun removeAnimalsFromFolder(
         @Path("folderId") folderId: String,
-        @Body animalIds: List<String>,
+        @Query("animalIds") animalIds: List<String>,
         @Header("Authorization") token: String
     ): Response<Void>
     @PUT("/api/folders/{folderId}/add-animals")
@@ -141,26 +150,26 @@ interface ApiService {
     suspend fun searchAnimals(
         @Query("query") query: String,
         @Header("Authorization") token: String
-    ): Response<List<Animal>>
+    ): Response<List<AnimalDetails>>
 
     @GET("/api/animals/by-birth-date")
     suspend fun getAnimalsByBirthDate(
         @Query("startDate") startDate: String,
         @Query("endDate") endDate: String,
         @Header("Authorization") token: String
-    ): Response<List<Animal>>
+    ): Response<List<AnimalDetails>>
 
     @GET("/api/animals/by-sickness")
     suspend fun getAnimalsBySickness(
         @Query("sicknessName") sicknessName: String,
         @Header("Authorization") token: String
-    ): Response<List<Animal>>
+    ): Response<List<AnimalDetails>>
 
     @GET("/api/animals/by-vaccination")
     suspend fun getAnimalsByVaccination(
         @Query("vaccineName") vaccineName: String,
         @Header("Authorization") token: String
-    ): Response<List<Animal>>
+    ): Response<List<AnimalDetails>>
 
     // Get all animal events
     @GET("api/events")
@@ -185,4 +194,44 @@ interface ApiService {
 
     @GET("/api/events/vaccine-names")
     suspend fun getVaccineNames(@Header("Authorization") token: String): Response<List<String>>
+
+    @POST("/api/counting-sessions")
+    suspend fun saveCountingSession(@Header("Authorization") token: String, @Body request: CountingSessionRequest): Response<CountingSession>
+
+    @GET("/api/counting-sessions")
+    suspend fun getCountingSessions(
+        @Header("Authorization") token: String,
+        @Query("page") page: Int = 0,
+        @Query("size") size: Int = 7
+    ): Response<PageResponse<CountingSession>>
+
+    @PUT("/api/counting-sessions/{id}")
+    suspend fun updateCountingSession(
+        @Path("id") id: String,
+        @Header("Authorization") token: String,
+        @Body sessionRequest: CountingSessionRequest
+    ): Response<Void>
+
+
+
+    @POST("api/transfers")
+    suspend fun createTransfer(@Header("Authorization") token: String, @Body request: AnimalTransferRequest): Response<AnimalTransfer>
+
+    @GET("api/transfers/pending")
+    suspend fun getPendingTransfers(@Header("Authorization") token: String): Response<List<AnimalTransfer>>
+
+    @POST("api/transfers/{transferId}/accept")
+    suspend fun acceptTransfer(@Header("Authorization") token: String, @Path("transferId") transferId: String): Response<String>
+
+    @GET("api/transfers/sent")
+    suspend fun getSentTransfers(@Header("Authorization") token: String): Response<List<AnimalTransfer>>
+
+    @GET("api/transfers/received")
+    suspend fun getReceivedTransfers(@Header("Authorization") token: String): Response<List<AnimalTransfer>>
+
+    @POST("api/events/delete")
+    suspend fun deleteEventsBulk(
+        @Body ids: List<String>,
+        @Header("Authorization") token: String
+    ): Response<ResponseBody>
 }

@@ -6,12 +6,15 @@ import com.example.farmerappfrontend.Folder
 import androidx.compose.material.icons.filled.Folder
 import android.widget.Toast
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -28,6 +31,8 @@ import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Vaccines
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -35,7 +40,7 @@ import java.time.temporal.ChronoUnit
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun FilesScreen(navController: NavController) {
+fun FilesScreen(navController: NavController, token: String) {
     var folderName by remember { mutableStateOf("") }
     var isCreating by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -55,8 +60,9 @@ fun FilesScreen(navController: NavController) {
     var isNamesLoading by remember { mutableStateOf(true) }
     var namesError by remember { mutableStateOf<String?>(null) }
     var toastMessage by remember { mutableStateOf<String?>(null) }
+    var editingFolderId by remember { mutableStateOf<String?>(null) }
+    var editingFolderName by remember { mutableStateOf("") }
 
-    val token = TokenManager.getToken(navController.context)
     val coroutineScope = rememberCoroutineScope()
     val context = navController.context
 
@@ -82,9 +88,7 @@ fun FilesScreen(navController: NavController) {
             isCreating = true
             coroutineScope.launch {
                 try {
-
                     val folderRequest = FolderRequest(name = folderName)
-
                     val response = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
                     if (response.isSuccessful) {
                         fetchFiles() // Refresh the list after creating a folder
@@ -145,10 +149,8 @@ fun FilesScreen(navController: NavController) {
                     EventType.SICKNESS -> "Sickness: $eventName"
                     EventType.VACCINATION -> "Vaccination: $eventName"
                 }
-
                 val folderRequest = FolderRequest(name = folderName)
                 val createResponse = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
-                
                 if (!createResponse.isSuccessful) {
                     errorMessage = "Failed to create folder: ${createResponse.message()}"
                     return@launch
@@ -276,6 +278,46 @@ fun FilesScreen(navController: NavController) {
         }
     }
 
+    // Function to check if a folder is generated (has specific naming patterns)
+    fun isGeneratedFolder(folderName: String): Boolean {
+        return folderName.startsWith("Births") || 
+               folderName.startsWith("Sickness:") || 
+               folderName.startsWith("Vaccination:")
+    }
+
+    // Function to rename a folder
+    fun renameFolder(folderId: String, newName: String) {
+        if (newName.isNotBlank()) {
+            coroutineScope.launch {
+                try {
+                    val folderRequest = FolderRequest(name = newName)
+                    val response = RetrofitClient.apiService.renameFolder(folderId, "Bearer $token", folderRequest)
+                    if (response.isSuccessful) {
+                        fetchFiles() // Refresh the list after renaming
+                        editingFolderId = null
+                        editingFolderName = ""
+                    } else {
+                        errorMessage = "Failed to rename folder: ${response.message()}"
+                    }
+                } catch (e: Exception) {
+                    errorMessage = "Error renaming folder: ${e.message}"
+                }
+            }
+        } else {
+            errorMessage = "Folder name cannot be empty."
+        }
+    }
+
+    // Function to handle double-click for renaming
+    fun handleFolderClick(folder: Folder) {
+        if (!isGeneratedFolder(folder.name)) {
+            editingFolderId = folder.id
+            editingFolderName = folder.name
+        } else {
+            navController.navigate("folder/${folder.id}/animals/$token")
+        }
+    }
+
     // Fetch files when the screen is first loaded
     LaunchedEffect(Unit) {
         fetchFiles()
@@ -316,7 +358,6 @@ fun FilesScreen(navController: NavController) {
     @Composable
     fun FileCreationDialog(onDismiss: () -> Unit, onCreate: (String) -> Unit) {
         var fileName by remember { mutableStateOf("") }
-
         AlertDialog(
             onDismissRequest = onDismiss,
             title = { Text("Create Folder") },
@@ -358,13 +399,11 @@ fun FilesScreen(navController: NavController) {
                 onClick = { onRangeSelected(TimeRange.LAST_3_MONTHS) }
             )
             Text("Last 3 months")
-
             RadioButton(
                 selected = selectedRange == TimeRange.LAST_6_MONTHS,
                 onClick = { onRangeSelected(TimeRange.LAST_6_MONTHS) }
             )
             Text("Last 6 months")
-
             RadioButton(
                 selected = selectedRange == TimeRange.SPECIFIC_YEAR,
                 onClick = { onRangeSelected(TimeRange.SPECIFIC_YEAR) }
@@ -376,7 +415,14 @@ fun FilesScreen(navController: NavController) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("HerdID") },
+                title = {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = "HerdID Logo",
+                        modifier = Modifier.size(40.dp).
+                        clickable{navController.navigate("home/$token")}
+                    )
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(MaterialTheme.colorScheme.primary)
             )
         }
@@ -444,7 +490,14 @@ fun FilesScreen(navController: NavController) {
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp),
+                            .padding(horizontal = 16.dp)
+                            .pointerInput(folder.id) {
+                                detectTapGestures(
+                                    onTap = {
+                                        navController.navigate("folder/${folder.id}/animals/$token")
+                                    }
+                                )
+                            },
                         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                         colors = if (selectedFolders.contains(folder.id)) {
                             CardDefaults.cardColors(containerColor = Color(0xFF90CAF9)) // Highlight selected
@@ -460,16 +513,63 @@ fun FilesScreen(navController: NavController) {
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(
-                                modifier = Modifier.weight(1f).clickable {
-                                    navController.navigate("folder/${folder.id}/animals") // Navigate to folder content
-                                }
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Text(
-                                    folder.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
+                                if (editingFolderId == folder.id) {
+                                    Column {
+                                        BasicTextField(
+                                            value = editingFolderName,
+                                            onValueChange = { editingFolderName = it },
+                                            textStyle = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            ),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            TextButton(
+                                                onClick = {
+                                                    if (editingFolderName.isNotBlank()) {
+                                                        renameFolder(folder.id, editingFolderName)
+                                                    }
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Save")
+                                            }
+                                            TextButton(
+                                                onClick = {
+                                                    editingFolderId = null
+                                                    editingFolderName = ""
+                                                },
+                                                modifier = Modifier.weight(1f)
+                                            ) {
+                                                Text("Cancel")
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        folder.name,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        modifier = Modifier.pointerInput(folder.id) {
+                                            detectTapGestures(
+                                                onDoubleTap = {
+                                                    if (!isGeneratedFolder(folder.name)) {
+                                                        editingFolderId = folder.id
+                                                        editingFolderName = folder.name
+                                                    }
+                                                }
+                                            )
+                                        }
+                                    )
+                                }
                             }
 
                             Checkbox(
@@ -482,8 +582,12 @@ fun FilesScreen(navController: NavController) {
                                     }
                                 }
                             )
-                            IconButton(onClick = { refreshFolderAnimals(folder) }) {
-                                Icon(Icons.Default.Refresh, contentDescription = "Refresh Animals")
+                            
+                            // Only show refresh button for generated folders
+                            if (isGeneratedFolder(folder.name)) {
+                                IconButton(onClick = { refreshFolderAnimals(folder) }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = "Refresh Animals")
+                                }
                             }
                         }
                     }
@@ -543,7 +647,6 @@ fun FilesScreen(navController: NavController) {
                     Text(namesError!!, color = MaterialTheme.colorScheme.error)
                 } else {
                     Column {
-                        // Event type tabs
                         TabRow(selectedTabIndex = selectedTab) {
                             tabs.forEachIndexed { index, title ->
                                 Tab(
@@ -557,7 +660,7 @@ fun FilesScreen(navController: NavController) {
                         Spacer(modifier = Modifier.height(16.dp))
 
                         when (selectedTab) {
-                            0 -> { // Birth events
+                            0 -> {
                                 Column {
                                     Text("Select time range for birth events:")
                                     Spacer(modifier = Modifier.height(8.dp))
@@ -576,7 +679,7 @@ fun FilesScreen(navController: NavController) {
                                     }
                                 }
                             }
-                            1 -> { // Sickness events
+                            1 -> {
                                 Column {
                                     Text("Select sickness type:")
                                     Spacer(modifier = Modifier.height(8.dp))

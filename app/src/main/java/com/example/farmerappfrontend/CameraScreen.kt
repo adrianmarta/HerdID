@@ -27,66 +27,94 @@ import kotlinx.coroutines.launch
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import androidx.navigation.NavController
+import com.example.farmerappfrontend.levenshtein
+import com.example.farmerappfrontend.areOcrSimilar
+import androidx.lifecycle.viewmodel.compose.viewModel
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
+import android.content.Context
 
 @Composable
 fun CameraScreen(
     token: String,
     navController: NavController,
-    existingAnimalIds: List<String>
+    existingAnimalIds: List<String>,
+    cameraViewModel: CameraViewModel
 ) {
-    var scannedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val scannedIds by cameraViewModel.scannedIds.collectAsState()
     var popupMessage by remember { mutableStateOf<String?>(null) }
-    var isCounting by remember { mutableStateOf(true) }
-    var validatedAnimals by remember { mutableStateOf<Set<String>>(existingAnimalIds.toSet()) }
     val scope = rememberCoroutineScope()
+    var partialId by remember { mutableStateOf<String?>(null) }
+    var manualIdInput by remember { mutableStateOf("") }
+    var showManualDialog by remember { mutableStateOf(false) }
+    var closestMatch by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
 
-    // Validate existing animals against backend on startup
-    LaunchedEffect(Unit) {
+    fun vibrate(duration: Long) {
         try {
-            // Validate each existing animal ID
-            existingAnimalIds.forEach { id ->
-                val exists = validateAnimalIdWithBackend(token, id)
-                if (!exists) {
-                    // Remove from validated set if it doesn't exist in backend
-                    validatedAnimals = validatedAnimals - id
-                }
+            val vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
             }
-        } catch (e: Exception) {
-            popupMessage = "Error validating animals: ${e.message}"
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                vibrator.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE))
+            } else {
+                @Suppress("DEPRECATION")
+                vibrator.vibrate(duration)
+            }
+        } catch (_: Exception) {}
+    }
+
+    fun findClosestMatch(id: String): String? {
+        return existingAnimalIds.minByOrNull { levenshtein(it, id) }
+    }
+
+    fun processScannedId(id: String) {
+        if (id.isBlank()) return
+        val trimmedId = id.trim()
+        if (scannedIds.contains(trimmedId)) {
+            popupMessage = "ID: $trimmedId\nStatus: Already Scanned"
+            return
+        }
+        cameraViewModel.addScannedId(trimmedId)
+        scope.launch {
+            try {
+                val exists = validateAnimalIdWithBackend(token, trimmedId)
+                popupMessage = "ID: $trimmedId\nStatus: ${if (exists) "Present ✅" else "New Animal ⭐"}"
+                kotlinx.coroutines.delay(3000)
+                popupMessage = null
+            } catch (e: Exception) {
+                popupMessage = "Error validating animal: ${e.message}"
+                kotlinx.coroutines.delay(3000)
+                popupMessage = null
+            }
         }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
         CameraIDReader(
             onIDDetected = { id ->
-                if (id != null && !scannedIds.contains(id)) {
-                    scope.launch {
-                        try {
-                            val exists = validateAnimalIdWithBackend(token, id)
-                            validatedAnimals = if (exists) {
-                                validatedAnimals + id
-                            } else {
-                                validatedAnimals - id
-                            }
-                            scannedIds = scannedIds + id
-                            popupMessage = "ID: $id\nStatus: ${if (exists) "Present ✅" else "New Animal ⭐"}"
-                            kotlinx.coroutines.delay(3000)
-                            popupMessage = null
-                        } catch (e: Exception) {
-                            popupMessage = "Error validating animal: ${e.message}"
-                            kotlinx.coroutines.delay(3000)
-                            popupMessage = null
-                        }
-                    }
+                if (id != null) {
+                    vibrate(100)
+                    processScannedId(id)
                 }
+            },
+            onPartialIdDetected = { partial ->
+                vibrate(400)
+                partialId = partial
+                manualIdInput = partial
+                closestMatch = findClosestMatch(partial)
+                showManualDialog = true
             },
             onError = { error ->
                 popupMessage = "Error: $error"
             },
             modifier = Modifier.fillMaxSize()
         )
-
-        // Status popup
         popupMessage?.let {
             AlertDialog(
                 onDismissRequest = { popupMessage = null },
@@ -96,13 +124,43 @@ fun CameraScreen(
             )
         }
 
+        if (showManualDialog && partialId != null) {
+            AlertDialog(
+                onDismissRequest = { showManualDialog = false },
+                title = { Text("ID Not Found / Partial ID Detected") },
+                text = {
+                    Column {
+                        Text("Partial/Scanned ID: $partialId")
+                        closestMatch?.let {
+                            Text("Closest match: $it")
+                            Button(onClick = {
+                                processScannedId(it) // Use suggested ID
+                                showManualDialog = false
+                            }) { Text("Use $it") }
+                        }
+                        OutlinedTextField(
+                            value = manualIdInput,
+                            onValueChange = { manualIdInput = it },
+                            label = { Text("Enter/Correct ID") }
+                        )
+                    }
+                },
+                confirmButton = {
+                    Button(onClick = {
+                        processScannedId(manualIdInput) // Use manual input
+                        showManualDialog = false
+                    }) { Text("Confirm") }
+                },
+                dismissButton = {
+                    Button(onClick = { showManualDialog = false }) { Text("Cancel") }
+                }
+            )
+        }
+
         // Done button
         Button(
             onClick = {
-                val readAnimals = scannedIds.toList()
-                val newAnimals = readAnimals.filterNot { validatedAnimals.contains(it) }
-                navController.navigate("readAnimals/$token/${readAnimals.joinToString(",")}" +
-                        "/${newAnimals.joinToString(",")}")
+                navController.navigate("readAnimals/$token")
             },
             modifier = Modifier
                 .align(Alignment.BottomCenter)

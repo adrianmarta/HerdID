@@ -79,3 +79,45 @@ data class AnimalUpdateRequest(
     val birthDate: String? = null,
     val producesMilk: Boolean? = null
 )
+
+data class CountingSessionRequest(
+    val name: String,
+    val folderId: String?,
+    val readAnimalIds: List<String>
+)
+
+data class CountingSession(
+    val id: String,
+    val name: String,
+    val folderId: String?,
+    val readAnimalIds: List<String>,
+    val readDate: String
+)
+
+data class PageResponse<T>(
+    val content: List<T>,
+    val totalPages: Int,
+    val totalElements: Int,
+    val number: Int
+)
+
+
+
+enum class TransferStatus {
+    PENDING,
+    COMPLETED
+}
+
+data class AnimalTransfer(
+    val id: String,
+    val senderId: String,
+    val receiverId: String,
+    val animalIds: List<String>,
+    val transferDate: String, 
+    val status: TransferStatus
+)
+
+data class AnimalTransferRequest(
+    val receiverId: String,
+    val animalIds: List<String>
+)

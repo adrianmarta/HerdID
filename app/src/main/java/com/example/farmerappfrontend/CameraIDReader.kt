@@ -28,6 +28,7 @@ import kotlinx.coroutines.CoroutineScope
 @Composable
 fun CameraIDReader(
     onIDDetected: (String?) -> Unit,
+    onPartialIdDetected: (String) -> Unit,
     onError: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -70,6 +71,7 @@ fun CameraIDReader(
                             executor = executor,
                             previewView = previewView!!,
                             onIDDetected = onIDDetected,
+                            onPartialIdDetected = onPartialIdDetected,
                             onError = onError,
                             cooldownActive = cooldownActive,
                             setCooldownActive = { cooldownActive = it },
@@ -90,6 +92,7 @@ private fun setupCamera(
     executor: ExecutorService,
     previewView: PreviewView,
     onIDDetected: (String?) -> Unit,
+    onPartialIdDetected: (String) -> Unit,
     onError: (String) -> Unit,
     cooldownActive: Boolean,
     setCooldownActive: (Boolean) -> Unit,
@@ -106,6 +109,7 @@ private fun setupCamera(
                     analyzeImage(
                         imageProxy,
                         onIDDetected,
+                        onPartialIdDetected,
                         onError
                     )
                 }
@@ -129,6 +133,7 @@ private fun setupCamera(
 private fun analyzeImage(
     imageProxy: ImageProxy,
     onIDDetected: (String?) -> Unit,
+    onPartialIdDetected: (String) -> Unit,
     onError: (String) -> Unit
 ) {
     val mediaImage = imageProxy.image
@@ -144,7 +149,11 @@ private fun analyzeImage(
             .addOnSuccessListener { visionText ->
                 val detectedID = extractAnimalIdFromText(visionText)
                 if (detectedID != null) {
-                    onIDDetected(detectedID)
+                    if (detectedID.length == 12) {
+                        onIDDetected(detectedID)
+                    } else if (detectedID.length in 7..11) {
+                        onPartialIdDetected(detectedID)
+                    }
                     lastReadTime.set(System.currentTimeMillis())
                 }
             }
@@ -164,7 +173,7 @@ private val lastReadTime = java.util.concurrent.atomic.AtomicLong(0L)
 
 private fun extractAnimalIdFromText(visionText: Text): String? {
     val normalizedText = visionText.text.replace("\\s+".toRegex(), "")
-    val regex = Regex("RO\\d{10}")
+    val regex = Regex("RO\\d{5,12}")
     val match = regex.find(normalizedText)
     return match?.value
 }
