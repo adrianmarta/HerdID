@@ -11,7 +11,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.farmerappfrontend"
-        minSdk = 24
+        minSdk = 25
         targetSdk = 34
         versionCode = 1
         versionName = "1.0"
@@ -85,6 +85,7 @@ dependencies {
     }
     implementation("androidx.camera:camera-camera2:1.4.0")
     implementation("androidx.room:room-runtime:2.5.0")
+    implementation(libs.androidx.compose.material)
     kapt("androidx.room:room-compiler:2.5.0")
     implementation("androidx.room:room-ktx:2.5.0")
 

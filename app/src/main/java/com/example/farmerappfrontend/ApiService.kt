@@ -1,4 +1,3 @@
-// ApiService.kt
 package com.example.farmerappfrontend
 
 
@@ -22,7 +21,6 @@ interface ApiService {
     suspend fun login(@Body loginRequest: LoginRequest): LoginResponse
     @GET("/api/users/profile")
     suspend fun getUserProfile(@Header("Authorization") token: String): UserProfile
-    // ApiService.kt
     @GET("api/animals/owner-animals")
     suspend fun getAnimalsByOwnerId(
         @Header("Authorization") token: String
@@ -95,7 +93,7 @@ interface ApiService {
     @PUT("/api/folders/{folderId}/remove-animals")
     suspend fun removeAnimalsFromFolder(
         @Path("folderId") folderId: String,
-        @Query("animalIds") animalIds: List<String>,
+        @Body animalIds: List<String>,
         @Header("Authorization") token: String
     ): Response<Void>
     @PUT("/api/folders/{folderId}/add-animals")
@@ -171,12 +169,6 @@ interface ApiService {
         @Header("Authorization") token: String
     ): Response<List<AnimalDetails>>
 
-    // Get all animal events
-    @GET("api/events")
-    suspend fun getAllEvents(
-        @Header("Authorization") token: String
-    ): Response<List<AnimalEvent>>
-
     @GET("api/statistics")
     suspend fun getStatistics(
         @Header("Authorization") token: String,
@@ -212,7 +204,11 @@ interface ApiService {
         @Body sessionRequest: CountingSessionRequest
     ): Response<Void>
 
-
+    @DELETE("/api/counting-sessions/delete/{id}")
+    suspend fun deleteCountingSession(
+        @Path("id") id: String,
+        @Header("Authorization") token: String
+    ): Response<Void>
 
     @POST("api/transfers")
     suspend fun createTransfer(@Header("Authorization") token: String, @Body request: AnimalTransferRequest): Response<AnimalTransfer>
@@ -221,7 +217,10 @@ interface ApiService {
     suspend fun getPendingTransfers(@Header("Authorization") token: String): Response<List<AnimalTransfer>>
 
     @POST("api/transfers/{transferId}/accept")
-    suspend fun acceptTransfer(@Header("Authorization") token: String, @Path("transferId") transferId: String): Response<String>
+    suspend fun acceptTransfer(@Header("Authorization") token: String, @Path("transferId") transferId: String): Response<Map<String,String>>
+
+    @POST("api/transfers/{transferId}/reject")
+    suspend fun rejectTransfer(@Header("Authorization") token: String, @Path("transferId") transferId: String): Response<Map<String,String>>
 
     @GET("api/transfers/sent")
     suspend fun getSentTransfers(@Header("Authorization") token: String): Response<List<AnimalTransfer>>
@@ -234,4 +233,22 @@ interface ApiService {
         @Body ids: List<String>,
         @Header("Authorization") token: String
     ): Response<ResponseBody>
+
+    @GET("/api/users/exists/{id}")
+    suspend fun checkUserExists(
+        @Path("id") userId: String
+    ): Response<Boolean>
+
+    @DELETE("/api/transfers/{transferId}")
+    suspend fun deleteTransfer(
+        @Header("Authorization") token: String,
+        @Path("transferId") transferId: String
+    ): Response<Void>
+    @GET("/api/events/by-type/{eventType}")
+    suspend fun getAnimalsByEventTypeAndDate(
+        @Path("eventType") eventType: String,
+        @Query("startDate") startDate: String,
+        @Query("endDate") endDate: String,
+        @Header("Authorization") token: String
+    ): Response<List<AnimalDetails>>
 }

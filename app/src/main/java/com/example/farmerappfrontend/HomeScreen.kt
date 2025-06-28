@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.CameraAlt
@@ -18,6 +19,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -38,8 +40,21 @@ fun HomeScreen(
 ) {
     val scope = rememberCoroutineScope()
     val customPurple = Color(0xFF6650a4)
+    var pendingTransfersCount by remember { mutableStateOf(0) }
+    
+    // Fetch pending transfers
+    LaunchedEffect(token) {
+        try {
+            val response = RetrofitClient.apiService.getPendingTransfers("Bearer $token")
+            if (response.isSuccessful) {
+                pendingTransfersCount = response.body()?.size ?: 0
+            }
+        } catch (_: Exception) {
+        }
+    }
+    
     val buttons = listOf(
-        ButtonData("Camera", Icons.Default.CameraAlt, Color(0xFF6650a4)) {
+        ButtonData("Camera", Icons.Default.CameraAlt, Color(0xFF6650a4), 0) {
             scope.launch {
                 try {
                     val response = RetrofitClient.apiService.getAnimalsByOwnerId("Bearer $token")
@@ -49,11 +64,11 @@ fun HomeScreen(
                 } catch (_: Exception) {}
             }
         },
-        ButtonData("Animal List", Icons.Default.List, Color(0xFF009688)) { navController.navigate("animals/$token") },
-        ButtonData("Files", Icons.Default.Folder, Color(0xFFFFA726)) { navController.navigate("files/$token") },
-        ButtonData("Statistics", Icons.Default.BarChart, Color(0xFF1976D2)) { navController.navigate("statistics/$token") },
-        ButtonData("Sessions", Icons.Default.History, Color(0xFFE53935)) { navController.navigate("sessions/$token") },
-        ButtonData("Transfers", Icons.Default.SwapHoriz, Color(0xFFFFEB3B)) { navController.navigate("transfers/$token") }
+        ButtonData("Animal List", Icons.Default.List, Color(0xFF009688), 0) { navController.navigate("animals/$token") },
+        ButtonData("Files", Icons.Default.Folder, Color(0xFFFFA726), 0) { navController.navigate("files/$token") },
+        ButtonData("Statistics", Icons.Default.BarChart, Color(0xFF1976D2), 0) { navController.navigate("statistics/$token") },
+        ButtonData("Sessions", Icons.Default.History, Color(0xFFE53935), 0) { navController.navigate("sessions/$token") },
+        ButtonData("Transfers", Icons.Default.SwapHoriz, Color(0xFFFFEB3B), pendingTransfersCount) { navController.navigate("transfers/$token") }
     )
 
     Scaffold(
@@ -101,6 +116,7 @@ fun HomeScreen(
                         label = data.label,
                         icon = data.icon,
                         color = data.color,
+                        notificationCount = data.notificationCount,
                         onClick = data.onClick,
                         modifier = Modifier
                             .aspectRatio(1f)
@@ -116,6 +132,7 @@ data class ButtonData(
     val label: String,
     val icon: ImageVector,
     val color: Color,
+    val notificationCount: Int,
     val onClick: () -> Unit
 )
 
@@ -124,22 +141,44 @@ fun HomeGridButton(
     label: String,
     icon: ImageVector,
     color: Color,
+    notificationCount: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Button(
-        onClick = onClick,
-        shape = MaterialTheme.shapes.medium,
-        colors = ButtonDefaults.buttonColors(containerColor = color),
-        modifier = modifier
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+    Box(modifier = modifier) {
+        Button(
+            onClick = onClick,
+            shape = MaterialTheme.shapes.medium,
+            colors = ButtonDefaults.buttonColors(containerColor = color),
+            modifier = Modifier.fillMaxSize()
         ) {
-            Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(28.dp))
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(text = label, fontSize = 13.sp, textAlign = TextAlign.Center)
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Icon(imageVector = icon, contentDescription = label, modifier = Modifier.size(28.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(text = label, fontSize = 13.sp, textAlign = TextAlign.Center)
+            }
+        }
+        
+        // Notification badge
+        if (notificationCount > 0) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(20.dp)
+                    .clip(CircleShape)
+                    .background(Color.Red),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (notificationCount > 99) "99+" else notificationCount.toString(),
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }

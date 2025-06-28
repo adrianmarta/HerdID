@@ -55,28 +55,26 @@ fun FolderReadAnimalsScreen(
 
     var animalsWithStatus by remember { mutableStateOf<List<ScannedAnimalStatus>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
-    var popupMessage by remember { mutableStateOf<String?>(null) } // For displaying messages like adding to folder result
+    var popupMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     var selectedAnimalIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isShowingNotRead by remember { mutableStateOf(false) }
     var notReadAnimalIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var allAnimals by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
 
-    // State for category selection checkboxes
     var selectAllInFolder by remember { mutableStateOf(false) }
     var selectAllNotInFolderExistsGlobally by remember { mutableStateOf(false) }
     var selectAllNewAnimal by remember { mutableStateOf(false) }
     var showSaveSessionDialog by remember { mutableStateOf(false) }
 
-    var showEventDialog by remember { mutableStateOf(false) } // State to control EventDialog visibility
+    var showEventDialog by remember { mutableStateOf(false) }
 
-    // Fetch all animals and calculate not read animals
+    // Fetch all animals
     LaunchedEffect(Unit) {
         try {
             val response = RetrofitClient.apiService.getAnimalsByFolderId(folderId, "Bearer $token")
             if (response.isSuccessful) {
                 allAnimals = response.body() ?: emptyList()
-                // Calculate not read animals (animals in folder that weren't scanned)
                 notReadAnimalIds = allAnimals.map { it.id }.filterNot { scannedAnimalIds.contains(it) }
             }
         } catch (e: Exception) {
@@ -84,7 +82,7 @@ fun FolderReadAnimalsScreen(
         }
     }
 
-    // Update animal statuses based on current view
+    // Update animal statuses
     LaunchedEffect(scannedAnimalIds, isShowingNotRead, allAnimals) {
         isLoading = true
         animalsWithStatus = if (isShowingNotRead) {
@@ -175,7 +173,7 @@ fun FolderReadAnimalsScreen(
                     .padding(innerPadding)
                     .padding(horizontal = 16.dp)
             ) {
-                // Top Action Buttons (Add to Folder, Add Event)
+                // Top Action Buttons
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -229,7 +227,6 @@ fun FolderReadAnimalsScreen(
                                 .filter { it.id in selectedAnimalIds && (it.status == AnimalStatus.IN_FOLDER || it.status == AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY) }
                                 .map { it.id }
                             if (eligibleAnimalIds.isNotEmpty()) {
-                                // Pass the eligible selected animal IDs to the dialog
                                 showEventDialog = true
                             } else {
                                 popupMessage = "Select animals that exist globally to add an event."
@@ -246,9 +243,9 @@ fun FolderReadAnimalsScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Selection Checkboxes (by Status Category)
+                // Selection Checkboxes
                 Column {
-                    // Select Present (In Folder) Checkbox
+                    // Select Present
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = selectAllInFolder,
@@ -262,7 +259,7 @@ fun FolderReadAnimalsScreen(
                             modifier = Modifier.clickable { selectAllInFolder = !selectAllInFolder }
                         )
                     }
-                    // Select Not Present (Exists Globally) Checkbox
+                    // Select Not Present
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = selectAllNotInFolderExistsGlobally,
@@ -276,7 +273,7 @@ fun FolderReadAnimalsScreen(
                            modifier = Modifier.clickable { selectAllNotInFolderExistsGlobally = !selectAllNotInFolderExistsGlobally }
                         )
                     }
-                    // Select New Animals Checkbox
+                    // Select New Animals
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Checkbox(
                             checked = selectAllNewAnimal,
@@ -292,7 +289,7 @@ fun FolderReadAnimalsScreen(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp)) // Space between checkboxes and list
+                Spacer(modifier = Modifier.height(16.dp))
 
                 // Animal List
                 LazyColumn(
@@ -319,17 +316,16 @@ fun FolderReadAnimalsScreen(
                                 }
                             )
                         ) {
-                            Row( // Use Row to place content and checkmark/button side by side
+                            Row(
                                 modifier = Modifier.padding(16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween // Space between content and checkmark/button
+                                horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) { // Allow column to take available space, add end padding
-                                    // Animal ID and Gender (if available)
+                                Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+
                                     val genderSymbol = if (item.animal?.gender?.equals("male", ignoreCase = true) == true) "♂" else if (item.animal?.gender?.equals("female", ignoreCase = true) == true) "♀" else ""
                                     Text("${item.id} $genderSymbol", style = MaterialTheme.typography.bodyLarge)
 
-                                    // Birth Date (if available)
                                     item.animal?.birthDate?.let { birthDate ->
                                         Text(
                                             text = "Born: ${birthDate}",
@@ -337,31 +333,15 @@ fun FolderReadAnimalsScreen(
                                             color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
-                                    // Status Text
-                                    Text("Status: ${when(item.status) { AnimalStatus.IN_FOLDER -> "Present"; AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY -> "Not Present"; AnimalStatus.NEW_ANIMAL -> "New" }}", style = MaterialTheme.typography.bodyMedium) // Display user-friendly status
-
-                                    // Show Add button for New Animals - placed below details
-                                    if (item.status == AnimalStatus.NEW_ANIMAL) {
-                                        Spacer(modifier = Modifier.height(8.dp))
-                                        Button(onClick = { navController.navigate("addSingleAnimal/$token/${item.id}") }) {
-                                            Text("Add Animal Globally")
-                                        }
+                                    Text("Status: ${when(item.status) { AnimalStatus.IN_FOLDER -> "Present"; AnimalStatus.NOT_IN_FOLDER_EXISTS_GLOBALLY -> "Not Present"; AnimalStatus.NEW_ANIMAL -> "New" }}", style = MaterialTheme.typography.bodyMedium)
+                                }
+                                if (item.status == AnimalStatus.NEW_ANIMAL) {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Button(onClick = { navController.navigate("addSingleAnimal/$token/${item.id}") }) {
+                                        Text("Add Animal ")
                                     }
                                 }
-
-                                // Right side of the card: Checkmark, Add button, and Details icon
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    // Checkmark Icon (Visible when selected and not a New Animal)
-                                    if (selectedAnimalIds.contains(item.id) && item.status != AnimalStatus.NEW_ANIMAL) { 
-                                        Icon(
-                                            Icons.Default.Check,
-                                            contentDescription = "Selected",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp)) // Space between checkmark and details icon
-                                    }
-
-                                    // Details Icon
+                                else {
                                     IconButton(onClick = { navController.navigate("animalDetails/${item.id}/{token}") }) {
                                         Icon(
                                             imageVector = Icons.Default.MoreVert,

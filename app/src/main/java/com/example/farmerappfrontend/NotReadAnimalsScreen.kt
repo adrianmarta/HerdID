@@ -70,11 +70,11 @@ fun NotReadAnimalsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            // Animal List (Scrollable)
+            // Animal List
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f), // Ensures the LazyColumn takes available space
+                    .weight(1f),
                 contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {

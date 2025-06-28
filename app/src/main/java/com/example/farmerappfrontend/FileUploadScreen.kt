@@ -231,7 +231,7 @@ fun AddAnimalsScreen(token: String, navController: NavController) {
 
                     OutlinedTextField(value = animalId, onValueChange = { animalId = it }, label = { Text("ID") }, modifier = Modifier.fillMaxWidth())
 
-                    // Birth Date with auto-formatting and numeric keyboard (like RegisterScreen)
+                    // Birth Date
                     var birthDateField by remember { mutableStateOf(TextFieldValue(birthDate)) }
                     OutlinedTextField(
                         value = birthDateField,
@@ -300,7 +300,7 @@ fun AddAnimalsScreen(token: String, navController: NavController) {
                         }
                     }
 
-                    // Produces Milk switch only if gender is F
+                    // Produces Milk
                     if (gender == "F") {
                         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                             Text("Produces Milk", modifier = Modifier.weight(1f))

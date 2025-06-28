@@ -53,7 +53,7 @@ fun FolderCameraScreen(
     var partialId by remember { mutableStateOf<String?>(null) }
     var manualIdInput by remember { mutableStateOf("") }
     var showManualDialog by remember { mutableStateOf(false) }
-    var closestMatch by remember { mutableStateOf<String?>(null) }
+    var closestMatches by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
@@ -93,13 +93,13 @@ fun FolderCameraScreen(
         scope.launch {
             val isInFolder = existingAnimalIds.contains(trimmedId)
             if (isInFolder) {
-                vibrate(100) // scurt pentru prezent
+                vibrate(100)
                 popupMessage = "ID: $trimmedId\nStatus: Present ⭐"
                 delay(5000)
                 animalDetails = null
                 popupMessage = null
             } else {
-                vibrate(400) // lung pentru absent
+                vibrate(400)
                 animalDetails = null
                 try {
                     val existsGloballyResponse = RetrofitClient.apiService.checkAnimalExists(trimmedId, "Bearer $token")
@@ -131,7 +131,7 @@ fun FolderCameraScreen(
                 vibrate(100)
                 partialId = partial
                 manualIdInput = partial
-                closestMatch = findClosestMatch(partial)
+                closestMatches = closestMatches(partial, existingAnimalIds, maxSuggestions = 3)
                 showManualDialog = true
             },
             modifier = Modifier.fillMaxSize()
@@ -161,12 +161,17 @@ fun FolderCameraScreen(
                 text = {
                     Column {
                         Text("Partial/Scanned ID: $partialId")
-                        closestMatch?.let {
-                            Text("Closest match: $it")
-                            Button(onClick = {
-                                processScannedId(it)
-                                showManualDialog = false
-                            }) { Text("Use $it") }
+                        if (closestMatches.isNotEmpty()) {
+                            Text("Closest matches:")
+                            closestMatches.forEach { match ->
+                                Button(
+                                    onClick = {
+                                        processScannedId(match)
+                                        showManualDialog = false
+                                    },
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                ) { Text(match) }
+                            }
                         }
                         OutlinedTextField(
                             value = manualIdInput,

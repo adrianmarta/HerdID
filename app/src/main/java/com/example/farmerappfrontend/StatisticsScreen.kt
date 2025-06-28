@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Folder
@@ -37,11 +39,15 @@ import com.github.mikephil.charting.charts.PieChart as MPPieChart
 import com.github.mikephil.charting.components.Description
 import com.github.mikephil.charting.data.*
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.github.mikephil.charting.listener.OnChartValueSelectedListener
+import com.github.mikephil.charting.highlight.Highlight
+import com.github.mikephil.charting.data.Entry
 import kotlinx.coroutines.launch
 import com.github.mikephil.charting.charts.BarChart as MPBarChart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-
+import java.time.Year
+import java.util.Calendar
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StatisticsScreen(navController: NavController,token:String) {
@@ -54,6 +60,119 @@ fun StatisticsScreen(navController: NavController,token:String) {
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val coroutineScope = rememberCoroutineScope()
     val customPurple = AndroidColor.parseColor("#6650a4")
+    var selectedYear by remember { mutableStateOf<String?>(null) }
+
+    var showAnimalDialog by remember { mutableStateOf(false) }
+    var selectedEventType by remember { mutableStateOf<String?>(null) }
+    var selectedEventName by remember { mutableStateOf<String?>(null) }
+    var selectedEventAnimals by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
+    var isLoadingAnimals by remember { mutableStateOf(false) }
+    var isGeneratingFolder by remember { mutableStateOf(false) }
+
+    @SuppressLint("NewApi")
+    fun loadAnimalsByEvent(eventType: String, eventName: String?) {
+        selectedEventType = eventType
+        selectedEventName = eventName
+        showAnimalDialog = true
+        isLoadingAnimals = true
+
+        coroutineScope.launch {
+            try {
+                val response = when (eventType) {
+                    "birth" -> {
+                        val year = eventName?.toIntOrNull() ?: Calendar.getInstance().get(Calendar.YEAR)
+                        val startDate = "$year-01-01"
+                        val endDate = "$year-12-31"
+                        RetrofitClient.apiService.getAnimalsByBirthDate(
+                            startDate,
+                            endDate,
+                            "Bearer $token"
+                        )
+                    }
+
+                    "sickness" -> {
+                        RetrofitClient.apiService.getAnimalsBySickness(
+                            eventName ?: "",
+                            "Bearer $token"
+                        )
+                    }
+
+                    "vaccination" -> {
+                        RetrofitClient.apiService.getAnimalsByVaccination(
+                            eventName ?: "",
+                            "Bearer $token"
+                        )
+                    }
+
+                    else -> null
+                }
+
+                if (response?.isSuccessful == true) {
+                    selectedEventAnimals = response.body() ?: emptyList()
+                } else {
+                    selectedEventAnimals = emptyList()
+                }
+            } catch (e: Exception) {
+                selectedEventAnimals = emptyList()
+            } finally {
+                isLoadingAnimals = false
+            }
+        }
+    }
+    fun generateFolderAndNavigate(eventType: String, eventName: String?) {
+        isGeneratingFolder = true
+
+        coroutineScope.launch {
+            try {
+                val folderName = when (eventType) {
+                    "birth" -> "Births $eventName"
+                    "sickness" -> "Sickness: $eventName"
+                    "vaccination" -> "Vaccination: $eventName"
+                    else -> "Event Folder"
+                }
+
+                val folderRequest = FolderRequest(name = folderName)
+                val createResponse =
+                    RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
+
+                if (createResponse.isSuccessful) {
+                    val newFolderId = createResponse.body()?.id
+                    if (newFolderId != null && selectedEventAnimals.isNotEmpty()) {
+                        val addResponse = RetrofitClient.apiService.addAnimalsToFolder(
+                            folderId = newFolderId,
+                            animalIds = selectedEventAnimals.map { it.id },
+                            authorization = "Bearer $token"
+                        )
+
+                        if (addResponse.isSuccessful) {
+                            showAnimalDialog = false
+                            navController.navigate("folder/${newFolderId}/animals/$token")
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+
+            } finally {
+                isGeneratingFolder = false
+            }
+        }
+    }
+    fun checkFolderAndNavigate(eventType: String, eventName: String?) {
+        val expectedFolderName = when (eventType) {
+            "birth" -> "Births $eventName"
+            "sickness" -> "Sickness: $eventName"
+            "vaccination" -> "Vaccination: $eventName"
+            else -> ""
+        }
+
+        val existingFolder = folders.find { it.name == expectedFolderName }
+        if (existingFolder != null) {
+            showAnimalDialog = false
+            navController.navigate("folder/${existingFolder.id}/animals/$token")
+        } else {
+            generateFolderAndNavigate(eventType, eventName)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -70,7 +189,7 @@ fun StatisticsScreen(navController: NavController,token:String) {
                         Spacer(modifier = Modifier.width(12.dp))
                         Text("Statistics")
                     }
-                    },
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = Color(customPurple),
                     titleContentColor = Color.White
@@ -96,12 +215,141 @@ fun StatisticsScreen(navController: NavController,token:String) {
             when {
                 isLoading -> LoadingState()
                 errorMessage != null -> ErrorState(errorMessage!!)
-                statistics != null -> StatisticsContent(statistics!!)
+                statistics != null -> StatisticsContent(
+                    statistics!!,
+                    selectedYear,
+                    onYearSelected = { selectedYear = it },
+                    onChartClick = { eventType, eventName ->
+                        loadAnimalsByEvent(
+                            eventType,
+                            eventName
+                        )
+                    }
+                )
             }
         }
     }
 
-    // Fetch folders on mount
+    // Animal Preview Dialog
+    if (showAnimalDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showAnimalDialog = false
+                selectedEventAnimals = emptyList()
+            },
+            title = {
+                Text(
+                    when (selectedEventType) {
+                        "birth" -> "Animals born in $selectedEventName"
+                        "sickness" -> "Animals with sickness: $selectedEventName"
+                        "vaccination" -> "Animals vaccinated with: $selectedEventName"
+                        else -> "Animals"
+                    }
+                )
+            },
+            text = {
+                if (isLoadingAnimals) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    Column {
+                        Text(
+                            text = "Total animals: ${selectedEventAnimals.size}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        if (selectedEventAnimals.isEmpty()) {
+                            Text("No animals found")
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.heightIn(max = 300.dp)
+                            ) {
+                                items(selectedEventAnimals.take(10)) { animal ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        elevation = CardDefaults.cardElevation(2.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp)
+                                        ) {
+                                            Text(
+                                                text = "ID: ${animal.id}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = "Species: ${animal.species}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Text(
+                                                text = "Birth Date: ${animal.birthDate}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (selectedEventAnimals.size > 10) {
+                                Text(
+                                    text = "... and ${selectedEventAnimals.size - 10} more",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            selectedEventType?.let { type ->
+                                selectedEventName?.let { name ->
+                                    checkFolderAndNavigate(type, name)
+                                }
+                            }
+                        },
+                        enabled = !isGeneratingFolder && selectedEventAnimals.isNotEmpty()
+                    ) {
+                        if (isGeneratingFolder) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Generating...")
+                        } else {
+                            Icon(Icons.Default.Folder, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Go to Folder")
+                        }
+                    }
+                    Button(
+                        onClick = {
+                            showAnimalDialog = false
+                            selectedEventAnimals = emptyList()
+                        }
+                    ) {
+                        Text("Close")
+                    }
+                }
+            }
+        )
+    }
+
+    // Fetch folders
     LaunchedEffect(token) {
         if (token.isNullOrBlank()) {
             errorMessage = "Authentication token not found"
@@ -119,7 +367,7 @@ fun StatisticsScreen(navController: NavController,token:String) {
         }
     }
 
-    // Fetch statistics when token or selectedFolder changes
+    // Fetch statistics
     LaunchedEffect(token, selectedFolder) {
         if (token.isNullOrBlank()) return@LaunchedEffect
         isLoading = true
@@ -127,7 +375,8 @@ fun StatisticsScreen(navController: NavController,token:String) {
         coroutineScope.launch {
             try {
                 val authHeader = if (token.startsWith("Bearer ")) token else "Bearer $token"
-                val response = RetrofitClient.apiService.getStatistics(authHeader, selectedFolder?.id)
+                val response =
+                    RetrofitClient.apiService.getStatistics(authHeader, selectedFolder?.id)
                 if (response.isSuccessful) {
                     statistics = response.body()
                 } else {
@@ -144,6 +393,8 @@ fun StatisticsScreen(navController: NavController,token:String) {
             }
         }
     }
+
+
 }
 
 @Composable
@@ -186,7 +437,13 @@ fun ErrorState(message: String) {
 }
 
 @Composable
-fun StatisticsContent(stats: StatisticsResponse) {
+fun StatisticsContent(stats: StatisticsResponse, selectedYear: String?, onYearSelected: (String) -> Unit, onChartClick: (String, String?) -> Unit) {
+    val availableYears = stats.birthsByYear?.keys?.sorted() ?: emptyList()
+    LaunchedEffect(availableYears) {
+        if (availableYears.isNotEmpty() && (selectedYear == null || selectedYear !in availableYears)) {
+            onYearSelected(availableYears.first())
+        }
+    }
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(24.dp)
@@ -202,7 +459,7 @@ fun StatisticsContent(stats: StatisticsResponse) {
             }
         }
 
-        BirthsVsEligibleChart(stats)
+        BirthsVsEligibleChart(stats, selectedYear, onYearSelected, onChartClick)
 
         stats.diseaseCounts?.takeIf { it.isNotEmpty() }?.let { diseases ->
             Card(
@@ -211,7 +468,7 @@ fun StatisticsContent(stats: StatisticsResponse) {
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Diseases", fontWeight = FontWeight.Bold)
-                    MPAndroidBarChart(title = "Diseases", dataMap = diseases.mapValues { it.value ?: 0 })
+                    MPAndroidBarChart(title = "Diseases", dataMap = diseases.mapValues { it.value ?: 0 }, onChartClick = { eventType, eventName -> onChartClick(eventType, eventName) })
                 }
             }
         }
@@ -223,7 +480,7 @@ fun StatisticsContent(stats: StatisticsResponse) {
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Vaccinations", fontWeight = FontWeight.Bold)
-                    MPAndroidBarChart(title = "Vaccinations", dataMap = vaccines.mapValues { it.value ?: 0 })
+                    MPAndroidBarChart(title = "Vaccinations", dataMap = vaccines.mapValues { it.value ?: 0 }, onChartClick = { eventType, eventName -> onChartClick(eventType, eventName) })
                 }
             }
         }
@@ -255,7 +512,13 @@ fun MPAndroidPieChart(milkProducers: Int, total: Int) {
 }
 
 @Composable
-fun MPAndroidBarChart(title: String, dataMap: Map<String, Int>) {
+fun MPAndroidBarChart(title: String, dataMap: Map<String, Int>, onChartClick: (String, String?) -> Unit) {
+    val eventType = when (title) {
+        "Diseases" -> "sickness"
+        "Vaccinations" -> "vaccination"
+        else -> ""
+    }
+    
     AndroidView(
         modifier = Modifier.fillMaxWidth().height(250.dp),
         factory = { context ->
@@ -277,6 +540,21 @@ fun MPAndroidBarChart(title: String, dataMap: Map<String, Int>) {
                 axisRight.isEnabled = false
                 description = Description().apply { text = "" }
                 legend.isEnabled = false
+                
+                setOnChartValueSelectedListener(object : com.github.mikephil.charting.listener.OnChartValueSelectedListener {
+                    override fun onValueSelected(e: Entry?, h: Highlight?) {
+                        e?.let { entry ->
+                            val index = entry.x.toInt()
+                            if (index < labels.size) {
+                                onChartClick(eventType, labels[index])
+                            }
+                        }
+                    }
+                    
+                    override fun onNothingSelected() {
+                    }
+                })
+                
                 invalidate()
             }
         }
@@ -284,9 +562,13 @@ fun MPAndroidBarChart(title: String, dataMap: Map<String, Int>) {
 }
 
 @Composable
-fun BirthsVsEligibleChart(stats: StatisticsResponse) {
+fun BirthsVsEligibleChart(
+    stats: StatisticsResponse,
+    selectedYear: String?,
+    onYearSelected: (String) -> Unit,
+    onChartClick: (String, String?) -> Unit
+) {
     val availableYears = stats.birthsByYear?.keys?.sorted() ?: return
-    var selectedYear by remember { mutableStateOf<String?>(null) }
 
     val femaleEligible = selectedYear?.let { stats.eligibleFemalesByYear?.get(it) } ?: 0
     val femaleBirths = selectedYear?.let { stats.femalesGaveBirthByYear?.get(it)?.size } ?: 0
@@ -304,7 +586,7 @@ fun BirthsVsEligibleChart(stats: StatisticsResponse) {
                 DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                     availableYears.forEach { year ->
                         DropdownMenuItem(text = { Text(year) }, onClick = {
-                            selectedYear = year
+                            onYearSelected(year)
                             expanded = false
                         })
                     }
@@ -319,27 +601,37 @@ fun BirthsVsEligibleChart(stats: StatisticsResponse) {
             ) {
                 Column(Modifier.padding(16.dp)) {
                     Text("Female Births in $selectedYear vs Eligible", fontWeight = FontWeight.Bold)
-                    AndroidView(
-                        modifier = Modifier.fillMaxWidth().height(220.dp),
-                        factory = { context ->
-                            MPPieChart(context).apply {
-                                val nonBirths = (femaleEligible - femaleBirths).coerceAtLeast(0)
-                                val entries = listOf(
-                                    PieEntry(femaleBirths.toFloat(), "Gave Birth"),
-                                    PieEntry(nonBirths.toFloat(), "Did Not")
-                                )
-                                val dataSet = PieDataSet(entries, "").apply {
-                                    colors = listOf(AndroidColor.MAGENTA, AndroidColor.LTGRAY)
-                                    valueTextColor = AndroidColor.BLACK
-                                    valueTextSize = 14f
+                    key(selectedYear) {
+                        AndroidView(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp),
+                            factory = { context ->
+                                MPPieChart(context).apply {
+                                    val nonBirths = (femaleEligible - femaleBirths).coerceAtLeast(0)
+                                    val entries = listOf(
+                                        PieEntry(femaleBirths.toFloat(), "Gave Birth"),
+                                        PieEntry(nonBirths.toFloat(), "Did Not")
+                                    )
+                                    val dataSet = PieDataSet(entries, "").apply {
+                                        colors = listOf(AndroidColor.MAGENTA, AndroidColor.LTGRAY)
+                                        valueTextColor = AndroidColor.BLACK
+                                        valueTextSize = 14f
+                                    }
+                                    data = PieData(dataSet)
+                                    description = Description().apply { text = "" }
+                                    legend.isEnabled = true
+                                    setOnChartValueSelectedListener(object : com.github.mikephil.charting.listener.OnChartValueSelectedListener {
+                                        override fun onValueSelected(e: Entry?, h: Highlight?) {
+                                            onChartClick("birth", selectedYear)
+                                        }
+                                        override fun onNothingSelected() {}
+                                    })
+                                    invalidate()
                                 }
-                                data = PieData(dataSet)
-                                description = Description().apply { text = "" }
-                                legend.isEnabled = true
-                                invalidate()
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }

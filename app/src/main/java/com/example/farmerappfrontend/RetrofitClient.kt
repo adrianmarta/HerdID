@@ -1,4 +1,3 @@
-// RetrofitClient.kt
 package com.example.farmerappfrontend
 
 import com.google.gson.GsonBuilder
@@ -11,10 +10,9 @@ object RetrofitClient {
     private const val BASE_URL = "http://192.168.100.42:8080" // Ensure this is your backend URL
 
     private val gson = GsonBuilder()
-        .setLenient()  // Enables lenient mode for non-standard JSON
+        .setLenient()
         .create()
 
-    // Single Retrofit instance with lenient Gson
     val client = OkHttpClient.Builder()
         .addInterceptor(HttpLoggingInterceptor().apply {
             level = HttpLoggingInterceptor.Level.BODY

@@ -40,7 +40,6 @@ fun CameraIDReader(
     var cooldownActive by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // Request permissions dynamically
     LaunchedEffect(Unit) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(
@@ -141,7 +140,7 @@ private fun analyzeImage(
         val image = InputImage.fromMediaImage(mediaImage, imageProxy.imageInfo.rotationDegrees)
         val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
         val currentTime = System.currentTimeMillis()
-        if (currentTime - lastReadTime.get() < 5000) {
+        if (currentTime - lastReadTime.get() < 2000) {
             imageProxy.close()
             return
         }
@@ -168,7 +167,6 @@ private fun analyzeImage(
     }
 }
 
-// Add a static variable outside the function to hold the last read time
 private val lastReadTime = java.util.concurrent.atomic.AtomicLong(0L)
 
 private fun extractAnimalIdFromText(visionText: Text): String? {

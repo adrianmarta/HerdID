@@ -48,7 +48,7 @@ fun CameraScreen(
     var partialId by remember { mutableStateOf<String?>(null) }
     var manualIdInput by remember { mutableStateOf("") }
     var showManualDialog by remember { mutableStateOf(false) }
-    var closestMatch by remember { mutableStateOf<String?>(null) }
+    var closestMatches by remember { mutableStateOf<List<String>>(emptyList()) }
     val context = LocalContext.current
 
     fun vibrate(duration: Long) {
@@ -83,7 +83,7 @@ fun CameraScreen(
         cameraViewModel.addScannedId(trimmedId)
         scope.launch {
             try {
-                val exists = validateAnimalIdWithBackend(token, trimmedId)
+                val exists = existingAnimalIds.contains(id);
                 popupMessage = "ID: $trimmedId\nStatus: ${if (exists) "Present ✅" else "New Animal ⭐"}"
                 kotlinx.coroutines.delay(3000)
                 popupMessage = null
@@ -107,7 +107,7 @@ fun CameraScreen(
                 vibrate(400)
                 partialId = partial
                 manualIdInput = partial
-                closestMatch = findClosestMatch(partial)
+                closestMatches = closestMatches(partial, existingAnimalIds, maxSuggestions = 3)
                 showManualDialog = true
             },
             onError = { error ->
@@ -131,12 +131,17 @@ fun CameraScreen(
                 text = {
                     Column {
                         Text("Partial/Scanned ID: $partialId")
-                        closestMatch?.let {
-                            Text("Closest match: $it")
-                            Button(onClick = {
-                                processScannedId(it) // Use suggested ID
-                                showManualDialog = false
-                            }) { Text("Use $it") }
+                        if (closestMatches.isNotEmpty()) {
+                            Text("Closest matches:")
+                            closestMatches.forEach { match ->
+                                Button(
+                                    onClick = {
+                                        processScannedId(match)
+                                        showManualDialog = false
+                                    },
+                                    modifier = Modifier.padding(vertical = 2.dp)
+                                ) { Text(match) }
+                            }
                         }
                         OutlinedTextField(
                             value = manualIdInput,
@@ -147,7 +152,7 @@ fun CameraScreen(
                 },
                 confirmButton = {
                     Button(onClick = {
-                        processScannedId(manualIdInput) // Use manual input
+                        processScannedId(manualIdInput)
                         showManualDialog = false
                     }) { Text("Confirm") }
                 },

@@ -22,4 +22,10 @@ fun areOcrSimilar(a: Char, b: Char): Boolean {
         setOf('3', '8'), setOf('1', '7'), setOf('0', '8'), setOf('5', '6'), setOf('2', '7'), setOf('1', '4')
     )
     return a == b || pairs.any { set -> a in set && b in set }
-} 
+}
+fun closestMatches(input: String, existingIds: List<String>, maxSuggestions: Int = 3): List<String> {
+    if (existingIds.isEmpty()) return emptyList()
+    val distances = existingIds.map { it to levenshtein(input, it) }
+    val minDistance = distances.minOf { it.second }
+     return distances.filter { it.second == minDistance }.map { it.first }
+}

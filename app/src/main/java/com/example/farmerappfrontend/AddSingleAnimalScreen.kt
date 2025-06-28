@@ -37,7 +37,6 @@ fun AddSingleAnimalScreen(
 
     val scope = rememberCoroutineScope()
 
-    // Load species options
     LaunchedEffect(Unit) {
         try {
             val response = RetrofitClient.apiService.getSpecies()
@@ -69,8 +68,8 @@ fun AddSingleAnimalScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding) // Apply padding from scaffold
-                .padding(16.dp) // Add extra padding for content
+                .padding(innerPadding)
+                .padding(16.dp)
                 .verticalScroll(scrollState),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -110,7 +109,6 @@ fun AddSingleAnimalScreen(
                 }
             }
 
-            // Birth Date with auto-formatting and numeric keyboard (like FileUploadScreen)
             var birthDateField by remember { mutableStateOf(TextFieldValue(birthDate)) }
             OutlinedTextField(
                 value = birthDateField,
@@ -140,7 +138,6 @@ fun AddSingleAnimalScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             )
 
-            // Gender dropdown
             var genderExpanded by remember { mutableStateOf(false) }
             ExposedDropdownMenuBox(
                 expanded = genderExpanded,
@@ -172,14 +169,13 @@ fun AddSingleAnimalScreen(
                         text = { Text("M") },
                         onClick = {
                             gender = "M"
-                            producesMilk = false // always false for M
+                            producesMilk = false
                             genderExpanded = false
                         }
                     )
                 }
             }
 
-            // Produces Milk switch only if gender is F
             if (gender == "F") {
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                     Text("Produces Milk", modifier = Modifier.weight(1f))
@@ -209,7 +205,7 @@ fun AddSingleAnimalScreen(
                                     formSuccess = "Animal added successfully!"
                                     formError = null
                                 } else {
-                                    formError = "Failed to add animal: ${response.message()}"
+                                    formError = "Animal belongs to another user"
                                     formSuccess = null
                                 }
                             } catch (e: Exception) {

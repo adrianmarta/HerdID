@@ -16,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowForward
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -59,6 +60,10 @@ fun SessionsScreen(
     var exportMessage by remember { mutableStateOf<String?>(null) }
     val sessionToExport = remember { mutableStateOf<CountingSession?>(null) }
     val coroutineScope = rememberCoroutineScope()
+    
+    var selectedSessions by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var showDeleteConfirmation by remember { mutableStateOf(false) }
+    var isDeleting by remember { mutableStateOf(false) }
 
     val createDocumentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf")
@@ -112,6 +117,25 @@ fun SessionsScreen(
         )
     }
 
+    if (isDeleting) {
+        AlertDialog(
+            onDismissRequest = { },
+            title = { Text("Deleting Sessions") },
+            text = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    CircularProgressIndicator()
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Text("Deleting selected sessions...")
+                }
+            },
+            confirmButton = {}
+        )
+    }
+
     exportMessage?.let {
         AlertDialog(
             onDismissRequest = { exportMessage = null },
@@ -120,6 +144,63 @@ fun SessionsScreen(
             confirmButton = {
                 Button(onClick = { exportMessage = null }) {
                     Text("OK")
+                }
+            }
+        )
+    }
+
+    if (showDeleteConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirmation = false },
+            title = { Text("Delete Sessions") },
+            text = { Text("Are you sure you want to delete ${selectedSessions.size} selected session(s)? This action cannot be undone.") },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showDeleteConfirmation = false
+                        coroutineScope.launch {
+                            isDeleting = true
+                            try {
+                                val deletePromises = selectedSessions.map { sessionId ->
+                                    RetrofitClient.apiService.deleteCountingSession(sessionId, "Bearer $token")
+                                }
+                                
+                                val results = deletePromises.map { it.isSuccessful }
+                                val successCount = results.count { it }
+                                val failureCount = results.size - successCount
+                                
+                                if (failureCount == 0) {
+                                    exportMessage = "Successfully deleted $successCount session(s)"
+                                } else {
+                                    exportMessage = "Deleted $successCount session(s), failed to delete $failureCount session(s)"
+                                }
+                                
+                                selectedSessions = emptySet()
+                                
+                                val sessionsResponse = RetrofitClient.apiService.getCountingSessions("Bearer $token", page = currentPage)
+                                if (sessionsResponse.isSuccessful) {
+                                    val page = sessionsResponse.body()
+                                    sessions = page?.content ?: emptyList()
+                                    totalPages = page?.totalPages ?: 1
+                                    if (page != null && page.number >= page.totalPages) {
+                                        currentPage = (page.totalPages - 1).coerceAtLeast(0)
+                                    }
+                                }
+                            } catch (e: Exception) {
+                                exportMessage = "Error deleting sessions: ${e.message}"
+                            } finally {
+                                isDeleting = false
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                ) {
+                    Text("Delete")
+                }
+            },
+            dismissButton = {
+                Button(onClick = { showDeleteConfirmation = false }) {
+                    Text("Cancel")
                 }
             }
         )
@@ -141,10 +222,24 @@ fun SessionsScreen(
                         Text("Sessions")
                     }
                 },
-
+                actions = {
+                    // Delete button
+                    if (selectedSessions.isNotEmpty()) {
+                        IconButton(
+                            onClick = { showDeleteConfirmation = true }
+                        ) {
+                            Icon(
+                                Icons.Default.Delete,
+                                contentDescription = "Delete Selected",
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
-                    titleContentColor = Color.White
+                    titleContentColor = Color.White,
+                    actionIconContentColor = Color.White
                 )
             )
         },
@@ -168,6 +263,14 @@ fun SessionsScreen(
                 onExportSession = { session ->
                     sessionToExport.value = session
                     createDocumentLauncher.launch("session_report_${session.name.replace(" ", "_")}.pdf")
+                },
+                selectedSessions = selectedSessions,
+                onSessionSelectionChanged = { sessionId, isSelected ->
+                    selectedSessions = if (isSelected) {
+                        selectedSessions + sessionId
+                    } else {
+                        selectedSessions - sessionId
+                    }
                 }
             )
             PaginationControls(
@@ -224,7 +327,9 @@ fun SessionList(
     token: String,
     cameraViewModel: CameraViewModel,
     folderCameraViewModel: FolderCameraViewModel,
-    onExportSession: (CountingSession) -> Unit
+    onExportSession: (CountingSession) -> Unit,
+    selectedSessions: Set<String>,
+    onSessionSelectionChanged: (String, Boolean) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     Card(
@@ -252,7 +357,12 @@ fun SessionList(
                                 }
                             }
                         },
-                        onExportClick = { onExportSession(session) }
+                        onExportClick = { onExportSession(session) },
+                        isSelected = selectedSessions.contains(session.id),
+                        onSelectionChanged = { isSelected ->
+                            onSessionSelectionChanged(session.id, isSelected)
+                        },
+                        selectedSessions = selectedSessions
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                 }
@@ -263,26 +373,48 @@ fun SessionList(
 
 @SuppressLint("NewApi")
 @Composable
-fun SessionItem(session: CountingSession, folderName: String?, onClick: () -> Unit, onExportClick: () -> Unit) {
+fun SessionItem(
+    session: CountingSession, 
+    folderName: String?, 
+    onClick: () -> Unit, 
+    onExportClick: () -> Unit, 
+    isSelected: Boolean, 
+    onSelectionChanged: (Boolean) -> Unit,
+    selectedSessions: Set<String>
+) {
     val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")
     val parsedDate = try {
         LocalDateTime.parse(session.readDate)
     } catch (e: Exception) {
         null
     }
+    
     Card(
         modifier = Modifier.fillMaxWidth(),
         elevation = CardDefaults.cardElevation(4.dp)
     ) {
         Row(
-            modifier = Modifier.padding(start = 16.dp),
+            modifier = Modifier
+                .padding(start = 16.dp)
+                .padding(vertical = 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // Checkbox for selection
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { isSelected ->
+                    onSelectionChanged(isSelected)
+                }
+            )
+            
+            // Session content
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .clickable(onClick = onClick)
-                    .padding(vertical = 16.dp)
+                    .clickable(
+                        onClick = onClick
+                    )
+                    .padding(start = 16.dp)
             ) {
                 Text(session.name, fontWeight = FontWeight.Bold)
                 Spacer(modifier = Modifier.height(4.dp))
@@ -295,8 +427,12 @@ fun SessionItem(session: CountingSession, folderName: String?, onClick: () -> Un
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            IconButton(onClick = onExportClick) {
-                Icon(Icons.Default.PictureAsPdf, contentDescription = "Export to PDF")
+            
+            // Export button
+            if (selectedSessions.isEmpty()) {
+                IconButton(onClick = onExportClick) {
+                    Icon(Icons.Default.PictureAsPdf, contentDescription = "Export to PDF")
+                }
             }
         }
     }
@@ -344,7 +480,6 @@ private suspend fun generateSessionPDFReport(
     session: CountingSession,
     folders: List<Folder>
 ) {
-    // 1. Fetch data
     val userResponse = try {
         RetrofitClient.apiService.getUserProfile("Bearer $token")
     } catch (e: Exception) {
@@ -359,7 +494,6 @@ private suspend fun generateSessionPDFReport(
         emptySet()
     }
 
-    // 2. Categorize animals IDs
     val newAnimalIds = session.readAnimalIds.filter { !allUserAnimalIds.contains(it) }
     val existingIds = session.readAnimalIds.filter { allUserAnimalIds.contains(it) }
 
@@ -391,7 +525,6 @@ private suspend fun generateSessionPDFReport(
     }
 
 
-    // 3. Generate PDF
     PDFBoxResourceLoader.init(context)
     val document = PDDocument()
     var page = PDPage()
@@ -442,7 +575,6 @@ private suspend fun generateSessionPDFReport(
         val columnWidths = floatArrayOf(30f, 80f, 80f, 40f, 100f, tableWidth - 330f)
         val headers = listOf("Nr.", "Specie", "Rasa", "Sex", "Data nastere", "Cod identificare")
 
-        // Draw header
         ensureSpace(headerHeight)
         var currentX = margin
         contentStream.setFont(PDType1Font.HELVETICA_BOLD, 10f)
@@ -515,7 +647,6 @@ private suspend fun generateSessionPDFReport(
         yPosition -= 20
     }
 
-    // Write Report Header
     writeText("Session Report", 50f, boldFont, 18f)
     yPosition -= 10
     writeText("Session Name: ${session.name}", 50f, font, 12f)
@@ -529,7 +660,6 @@ private suspend fun generateSessionPDFReport(
     }
     yPosition -= 20
 
-    // Draw Content
     if (session.folderId == null) {
         drawAnimalTable("Present Animals", presentInFolderAnimals)
     } else {

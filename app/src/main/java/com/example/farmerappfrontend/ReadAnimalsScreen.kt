@@ -52,7 +52,7 @@ fun ReadAnimalsScreen(
     var newAnimalIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var showSaveSessionDialog by remember { mutableStateOf(false) }
 
-    // Selection checkboxes state
+
     var selectAllPresent by remember { mutableStateOf(false) }
     var selectAllNew by remember { mutableStateOf(false) }
 
@@ -70,7 +70,7 @@ fun ReadAnimalsScreen(
         }
     }
 
-    // Update animal details based on current view
+    // Update animal details
     LaunchedEffect(isShowingNotRead, allAnimals, readAnimalIds, newAnimalIds) {
         isLoadingDetails = true
         try {
@@ -202,7 +202,7 @@ fun ReadAnimalsScreen(
                     .padding(horizontal = 16.dp),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Select Present Animals Checkbox
+                // Select Present
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
@@ -229,7 +229,7 @@ fun ReadAnimalsScreen(
                     )
                 }
 
-                // Select New Animals Checkbox (only shown in read view)
+                // Select New Animals
                 if (!isShowingNotRead) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -292,7 +292,7 @@ fun ReadAnimalsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column {
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                 Text(
                                     text = if (animalDetails != null) {
                                         val genderSymbol = if (animalDetails.gender.equals("male", ignoreCase = true)) "♂" else "♀"
@@ -318,13 +318,24 @@ fun ReadAnimalsScreen(
                                 }
                             }
                             if (isNew) {
+
                                 Button(
                                     onClick = { navController.navigate("addSingleAnimal/$token/$animalId") },
                                     modifier = Modifier.padding(start = 8.dp)
                                 ) {
                                     Text("Add")
                                 }
-                            } else if (selectedAnimals.contains(animalId)) {
+                            }
+                                else {
+                                    IconButton(onClick = { navController.navigate("animalDetails/${animalId}/{token}") }) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Details"
+                                        )
+                                    }
+                                }
+
+                            if (selectedAnimals.contains(animalId)) {
                                 Icon(
                                     Icons.Default.Check,
                                     contentDescription = "Selected",
@@ -353,14 +364,11 @@ fun ReadAnimalsScreen(
                                 popupMessage = "Selected animals deleted successfully"
                                 selectedAnimals = emptySet()
                                 
-                                // Update local state after deletion
                                 if (isShowingNotRead) {
-                                    // Remove deleted animals from allAnimals and recalculate notReadAnimalIds
                                     allAnimals = allAnimals.filter { it.id !in selectedAnimals }
                                     notReadAnimalIds = allAnimals.map { it.id }.filterNot { readAnimalIds.contains(it) }
                                     existingAnimalDetails = allAnimals.filter { it.id in notReadAnimalIds }
                                 } else {
-                                    // Refresh read animals list
                                     val existingIds = readAnimalIds.filter { !newAnimalIds.contains(it) && it !in selectedAnimals }
                                     if (existingIds.isNotEmpty()) {
                                         val response = RetrofitClient.apiService.getAnimalsByIds(existingIds, "Bearer $token")
@@ -393,7 +401,7 @@ fun ReadAnimalsScreen(
                             scope.launch {
                                 try {
                                     val request = CountingSessionRequest(
-                                        name = sessionName ?: "Unnamed", // Should have name if editing
+                                        name = sessionName ?: "Unnamed",
                                         folderId = null,
                                         readAnimalIds = readAnimalIds
                                     )
@@ -429,7 +437,7 @@ fun ReadAnimalsScreen(
                 }
             }
 
-            // Update checkbox states when selection changes
+            // Update checkbox
             LaunchedEffect(selectedAnimals, isShowingNotRead, newAnimalIds) {
                 if (isShowingNotRead) {
                     selectAllPresent = notReadAnimalIds.isNotEmpty() && selectedAnimals.containsAll(notReadAnimalIds)
@@ -441,7 +449,7 @@ fun ReadAnimalsScreen(
                 }
             }
 
-            // Update checkbox states when view changes
+            // Update checkbox
             LaunchedEffect(isShowingNotRead) {
                 selectedAnimals = emptySet()
                 selectAllPresent = false
@@ -539,7 +547,6 @@ fun FolderSelectionDialog(
     var isLoading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
-    // Load folders when dialog opens
     LaunchedEffect(Unit) {
         try {
             isLoading = true
@@ -713,7 +720,6 @@ fun FolderSelectionDialog(
                                                 )
                                             )
                                             if (response.isSuccessful) {
-                                                // Refresh folders list
                                                 val foldersResponse = RetrofitClient.apiService.getFolders("Bearer $token")
                                                 if (foldersResponse.isSuccessful) {
                                                     folders = foldersResponse.body() ?: emptyList()

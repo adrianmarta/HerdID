@@ -30,7 +30,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// MainActivity.kt
 @SuppressLint("NewApi")
 @Composable
 fun MyApp() {

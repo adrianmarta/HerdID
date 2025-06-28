@@ -76,7 +76,6 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
     var exportMessage by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     
-    // Folder dialog states
     var showFolderDialog by remember { mutableStateOf(false) }
     var folders by remember { mutableStateOf<List<Folder>>(emptyList()) }
     var showCreateFolderDialog by remember { mutableStateOf(false) }
@@ -85,7 +84,6 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
-    // Activity result launcher for creating a PDF file using SAF
     val createDocumentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf")
     ) { uri: Uri? ->
@@ -110,7 +108,6 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
         }
     }
 
-    // Fetch animals on component load
     LaunchedEffect(Unit) {
         loadAnimals(token) { result ->
             animals = result
@@ -174,7 +171,7 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
     var filterMilkYes by remember { mutableStateOf(false) }
     var filterMilkNo by remember { mutableStateOf(false) }
 
-    // Get the date range for all animals
+    // range animale
     val dateRange = remember(animals) {
         if (animals.isEmpty()) {
             Pair(LocalDate.now(), LocalDate.now())
@@ -184,7 +181,7 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
         }
     }
 
-    // Convert slider value to date
+    // Convertire date to value
     @SuppressLint("NewApi")
     fun sliderValueToDate(value: Float): LocalDate {
         val daysBetween = ChronoUnit.DAYS.between(dateRange.first, dateRange.second)
@@ -192,14 +189,13 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
         return dateRange.first.plusDays(daysToAdd)
     }
 
-    // Convert date to slider value
     fun dateToSliderValue(date: LocalDate): Float {
         val daysBetween = ChronoUnit.DAYS.between(dateRange.first, dateRange.second)
         val daysFromStart = ChronoUnit.DAYS.between(dateRange.first, date)
         return if (daysBetween > 0) daysFromStart.toFloat() / daysBetween else 0f
     }
 
-    // Validate date string format
+    // Validare date string format
     fun isValidDateString(dateStr: String): Boolean {
         return try {
             LocalDate.parse(dateStr)
@@ -209,7 +205,6 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
         }
     }
 
-    // Convert date string to slider value safely
     fun dateStringToSliderValue(dateStr: String): Float {
         return try {
             val date = LocalDate.parse(dateStr)
@@ -219,7 +214,6 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
         }
     }
 
-    // Update birth date range when text inputs change
     fun updateBirthDateRange(startDate: String, endDate: String) {
         if (isValidDateString(startDate) && isValidDateString(endDate)) {
             val start = dateStringToSliderValue(startDate)
@@ -230,13 +224,12 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
         }
     }
 
-    // Update filter dates when slider changes
     LaunchedEffect(birthDateRange) {
         filterBirthDateFrom = sliderValueToDate(birthDateRange.start).format(DateTimeFormatter.ISO_DATE)
         filterBirthDateTo = sliderValueToDate(birthDateRange.endInclusive).format(DateTimeFormatter.ISO_DATE)
     }
 
-    // Extrage toate speciile distincte pentru tab-ul de specie
+    // Extrage toate speciile distincte
     val allSpecies = animals.map { it.species }.distinct().sorted()
 
 
@@ -456,7 +449,7 @@ fun AnimalListScreen(token: String, navController: NavController, cameraViewMode
                 }
             }
 
-            // Bottom Buttons (Side by Side)
+            // Bottom Buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -879,7 +872,7 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
     val cellMargin = 5f
     val rowHeight = 20f
     val headerHeight = 25f
-    val tableStartYOffset = 30f // Space after header content
+    val tableStartYOffset = 30f
     val tableBottomY = margin
 
     val columnWidths = floatArrayOf(30f, 80f, 80f, 40f, 100f, tableWidth - 330f)
@@ -931,7 +924,7 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
     var contentStream = PDPageContentStream(document, page)
     var currentY = page.mediaBox.height - margin
 
-    // Draw initial header content
+    // Draw initial header
     contentStream.beginText()
     contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14f)
     contentStream.setTextMatrix(Matrix.getTranslateInstance(margin, currentY))
@@ -943,63 +936,57 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
     contentStream.beginText()
     contentStream.setFont(PDType1Font.HELVETICA, 10f)
     contentStream.setTextMatrix(Matrix.getTranslateInstance(margin, currentY))
-    contentStream.showText("Animal List Export".replaceRomanianChars()) // Placeholder, could add more details if available
+    contentStream.showText("Animal List Export ".replaceRomanianChars())
     contentStream.endText()
 
-    currentY -= tableStartYOffset // Space before table
+    currentY -= tableStartYOffset
     val tableStartX = margin
 
     drawHeader(contentStream, currentY)
-    currentY -= headerHeight // Move below header
+    currentY -= headerHeight
 
-    contentStream.setFont(PDType1Font.HELVETICA, 8f) // Use standard font for table content
+    contentStream.setFont(PDType1Font.HELVETICA, 8f)
 
     // Table content
     animals.forEachIndexed { index, animal ->
-        // Check if new page is needed
-        if (currentY - rowHeight < tableBottomY) { // Check if enough space for next row
+        if (currentY - rowHeight < tableBottomY) {
             contentStream.close()
             page = PDPage()
             document.addPage(page)
             contentStream = PDPageContentStream(document, page)
-            currentY = page.mediaBox.height - margin // Reset Y for new page
+            currentY = page.mediaBox.height - margin
             drawHeader(contentStream, currentY)
-            currentY -= headerHeight // Move below header on new page
-            contentStream.setFont(PDType1Font.HELVETICA, 8f) // Use standard font for table content on new page
+            currentY -= headerHeight
+            contentStream.setFont(PDType1Font.HELVETICA, 8f)
         }
 
-        // Draw row content
         var currentColumnX = tableStartX
-        val rowY = currentY - (rowHeight / 2f) + (8f / 2f) // Center text vertically in row
+        val rowY = currentY - (rowHeight / 2f) + (8f / 2f)
 
-        // Nr.
         contentStream.beginText()
         contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
         contentStream.showText((index + 1).toString())
         contentStream.endText()
         currentColumnX += columnWidths[0]
 
-        // Specie
         contentStream.beginText()
         contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
-        contentStream.showText("Ovine".replaceRomanianChars()) // Using placeholder, need actual specie
+        contentStream.showText("Ovine".replaceRomanianChars())
         contentStream.endText()
         currentColumnX += columnWidths[1]
 
-        // Rasa
         contentStream.beginText()
         contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
-        contentStream.showText(animal.species.replaceRomanianChars()) // Using species as placeholder for breed for now
+        contentStream.showText(animal.species.replaceRomanianChars())
         contentStream.endText()
         currentColumnX += columnWidths[2]
 
-        // Sex
         contentStream.beginText()
         contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
         val genderText = when (animal.gender.toLowerCase()) {
             "male", "m", "♂" -> "male"
             "female", "f", "♀" -> "female"
-            else -> animal.gender.replaceRomanianChars() // Fallback with replacement
+            else -> animal.gender.replaceRomanianChars()
         }
         contentStream.showText(genderText)
         contentStream.endText()
@@ -1019,13 +1006,11 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
         contentStream.endText()
         currentColumnX += columnWidths[5]
 
-        // Draw horizontal line below row
         contentStream.setLineWidth(0.5f)
         contentStream.moveTo(margin, currentY - rowHeight)
         contentStream.lineTo(margin + tableWidth, currentY - rowHeight)
         contentStream.stroke()
 
-         // Draw vertical lines for this row
          currentColumnX = margin
          for (width in columnWidths) {
              contentStream.moveTo(currentColumnX, currentY)
@@ -1037,7 +1022,7 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
          contentStream.lineTo(margin + tableWidth, currentY - rowHeight)
          contentStream.stroke()
 
-        currentY -= rowHeight // Move to the next row position
+        currentY -= rowHeight
     }
 
     contentStream.close()

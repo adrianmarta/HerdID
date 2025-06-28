@@ -1,9 +1,12 @@
 package com.example.farmerappfrontend
 
 import android.widget.Toast
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
@@ -11,6 +14,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import kotlinx.coroutines.launch
@@ -63,11 +67,13 @@ fun CreateTransferScreen(navController: NavController, token: String) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Create New Transfer") },
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
-                    }
+                title = {
+                    Image(
+                        painter = painterResource(id = R.drawable.logo),
+                        contentDescription = "HerdID Logo",
+                        modifier = Modifier.size(40.dp).
+                        clickable{navController.navigate("home/$token")}
+                    )
                 },
                 colors = TopAppBarDefaults.centerAlignedTopAppBarColors(MaterialTheme.colorScheme.primary)
             )
@@ -123,31 +129,56 @@ fun CreateTransferScreen(navController: NavController, token: String) {
 
             if (animalsInFolder.isNotEmpty()) {
                 Text("Animals to be transferred:", style = MaterialTheme.typography.titleMedium)
-                LazyColumn(modifier = Modifier.heightIn(max = 200.dp)) {
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     items(animalsInFolder) { animal ->
-                        Text("ID: ${animal.id}")
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            elevation = CardDefaults.cardElevation(4.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .padding(12.dp)
+                                    .fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${animal.id}: ${animal.species}",
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                            }
+                        }
                     }
                 }
             }
-
-            Spacer(modifier = Modifier.weight(1f))
+            Spacer(modifier = Modifier.height(16.dp))
 
             Button(
                 onClick = {
                     if (receiverId.isNotBlank() && selectedFolderId != null && animalsInFolder.isNotEmpty()) {
-                        val request = AnimalTransferRequest(
-                            receiverId = receiverId,
-                            animalIds = animalsInFolder.map { it.id }
-                        )
                         coroutineScope.launch {
                             try {
-                                val response = RetrofitClient.apiService.createTransfer("Bearer $token", request)
-                                if (response.isSuccessful) {
-                                    Toast.makeText(context, "Transfer created successfully!", Toast.LENGTH_SHORT).show()
-                                    navController.popBackStack()
+                                val userExistsResponse = RetrofitClient.apiService.checkUserExists(receiverId)
+                                if (userExistsResponse.isSuccessful && userExistsResponse.body() == true) {
+                                    val request = AnimalTransferRequest(
+                                        receiverId = receiverId,
+                                        animalIds = animalsInFolder.map { it.id }
+                                    )
+                                    val response = RetrofitClient.apiService.createTransfer("Bearer $token", request)
+                                    if (response.isSuccessful) {
+                                        Toast.makeText(context, "Transfer created successfully!", Toast.LENGTH_SHORT).show()
+                                        navController.popBackStack()
+                                    } else {
+                                        val errorBody = response.errorBody()?.string() ?: "Unknown error"
+                                        Toast.makeText(context, "Failed to create transfer: $errorBody", Toast.LENGTH_LONG).show()
+                                    }
                                 } else {
-                                    val errorBody = response.errorBody()?.string() ?: "Unknown error"
-                                    Toast.makeText(context, "Failed to create transfer: $errorBody", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, "User ID does not exist.", Toast.LENGTH_SHORT).show()
                                 }
                             } catch (e: Exception) {
                                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()

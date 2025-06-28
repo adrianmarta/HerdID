@@ -32,6 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.ChronoUnit
 
 @RequiresApi(Build.VERSION_CODES.O)
 @OptIn(ExperimentalMaterial3Api::class)
@@ -58,11 +59,75 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
     var selectedEventType by remember { mutableStateOf("") }
     var filterStartDate by remember { mutableStateOf("") }
     var filterEndDate by remember { mutableStateOf("") }
+    var eventDateRange by remember { mutableStateOf(0f..1f) }
     var expanded by remember { mutableStateOf(false) }
-    // Tipuri distincte de evenimente pentru dropdown
-    val eventTypes = animalEvents.map { it.eventType }.distinct().sorted()
+    var allEventTypes by remember { mutableStateOf<List<String>>(emptyList()) }
+    var eventTypesLoading by remember { mutableStateOf(true) }
+    var eventTypesError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        try {
+            val response = RetrofitClient.apiService.getEventTypes()
+            if (response.isSuccessful) {
+                val types = response.body()?.keys?.toList()?.sorted() ?: emptyList()
+                allEventTypes = types
+            } else {
+                eventTypesError = "Nu s-au putut încărca tipurile de evenimente"
+            }
+        } catch (e: Exception) {
+            eventTypesError = "Eroare la încărcarea tipurilor: ${e.message}"
+        } finally {
+            eventTypesLoading = false
+        }
+    }
 
     var selectedEventIds by remember { mutableStateOf(setOf<String>()) }
+
+    val eventDateRangeBounds = remember(animalEvents) {
+        val dates = animalEvents.mapNotNull {
+            try { LocalDate.parse(it.eventDate) } catch (e: Exception) { null }
+        }
+        if (dates.isEmpty()) Pair(LocalDate.now(), LocalDate.now())
+        else Pair(dates.minOrNull()!!, dates.maxOrNull()!!)
+    }
+
+    // Inițializare epentru range și filtre
+    LaunchedEffect(eventDateRangeBounds) {
+        eventDateRange = 0f..1f
+        filterStartDate = eventDateRangeBounds.first.format(DateTimeFormatter.ISO_DATE)
+        filterEndDate = eventDateRangeBounds.second.format(DateTimeFormatter.ISO_DATE)
+    }
+
+    // Convert slider value to date
+    fun sliderValueToEventDate(value: Float): LocalDate {
+        val daysBetween = ChronoUnit.DAYS.between(eventDateRangeBounds.first, eventDateRangeBounds.second)
+        val daysToAdd = (daysBetween * value).toLong()
+        return eventDateRangeBounds.first.plusDays(daysToAdd)
+    }
+    // Convert date to slider value
+    fun eventDateToSliderValue(date: LocalDate): Float {
+        val daysBetween = ChronoUnit.DAYS.between(eventDateRangeBounds.first, eventDateRangeBounds.second)
+        val daysFromStart = ChronoUnit.DAYS.between(eventDateRangeBounds.first, date)
+        return if (daysBetween > 0) daysFromStart.toFloat() / daysBetween else 0f
+    }
+    fun isValidEventDateString(dateStr: String): Boolean {
+        return try { LocalDate.parse(dateStr); true } catch (e: Exception) { false }
+    }
+    fun eventDateStringToSliderValue(dateStr: String): Float {
+        return try { eventDateToSliderValue(LocalDate.parse(dateStr)) } catch (e: Exception) { 0f }
+    }
+    fun updateEventDateRange(startDate: String, endDate: String) {
+        if (isValidEventDateString(startDate) && isValidEventDateString(endDate)) {
+            val start = eventDateStringToSliderValue(startDate)
+            val end = eventDateStringToSliderValue(endDate)
+            if (start <= end) {
+                eventDateRange = start..end
+            }
+        }
+    }
+    LaunchedEffect(eventDateRange) {
+        filterStartDate = sliderValueToEventDate(eventDateRange.start).format(DateTimeFormatter.ISO_DATE)
+        filterEndDate = sliderValueToEventDate(eventDateRange.endInclusive).format(DateTimeFormatter.ISO_DATE)
+    }
 
     // Filtrare evenimente
     val filteredEvents = animalEvents.filter { event ->
@@ -193,7 +258,6 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
                     .padding(16.dp)
                     .verticalScroll(rememberScrollState())
             ) {
-                // Card principal cu gradient, iconițe și câmpuri editabile direct
                 Card(
                     shape = RoundedCornerShape(18.dp),
                     elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),
@@ -315,7 +379,7 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
                         }
                     }
                 }
-                // Buton de salvare sub card
+                // Buton de salvare
                 Button(
                     onClick = { updateAnimal() },
                     modifier = Modifier.fillMaxWidth(),
@@ -348,57 +412,91 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
                     if (showFilters) {
                         AlertDialog(
                             onDismissRequest = { showFilters = false },
-                            title = { Text("Filtrează evenimentele") },
+                            title = { Text("Filter Events") },
                             text = {
                                 Column(Modifier.fillMaxWidth()) {
                                     // Dropdown tip eveniment
-                                    Text("Tip eveniment:", fontWeight = FontWeight.SemiBold)
+                                    Text("Event type:", fontWeight = FontWeight.SemiBold)
                                     var typeDropdownExpanded by remember { mutableStateOf(false) }
-                                    OutlinedTextField(
-                                        value = selectedEventType,
-                                        onValueChange = {},
-                                        readOnly = true,
-                                        label = { Text("Alege tipul") },
-                                        trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeDropdownExpanded) },
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable { typeDropdownExpanded = !typeDropdownExpanded }
-                                    )
-                                    DropdownMenu(
-                                        expanded = typeDropdownExpanded,
-                                        onDismissRequest = { typeDropdownExpanded = false }
-                                    ) {
-                                        DropdownMenuItem(
-                                            text = { Text("Toate") },
-                                            onClick = {
-                                                selectedEventType = ""
-                                                typeDropdownExpanded = false
-                                            }
-                                        )
-                                        eventTypes.forEach { type ->
-                                            DropdownMenuItem(
-                                                text = { Text(type.capitalize()) },
-                                                onClick = {
-                                                    selectedEventType = type
-                                                    typeDropdownExpanded = false
-                                                }
+                                    if (eventTypesLoading) {
+                                        CircularProgressIndicator(Modifier.align(Alignment.CenterHorizontally))
+                                    } else if (eventTypesError != null) {
+                                        Text(eventTypesError!!, color = MaterialTheme.colorScheme.error)
+                                    } else {
+                                        ExposedDropdownMenuBox(
+                                            expanded = typeDropdownExpanded,
+                                            onExpandedChange = { typeDropdownExpanded = !typeDropdownExpanded }
+                                        ) {
+                                            OutlinedTextField(
+                                                value = selectedEventType,
+                                                onValueChange = {},
+                                                readOnly = true,
+                                                label = { Text("Choose type") },
+                                                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = typeDropdownExpanded) },
+                                                modifier = Modifier.menuAnchor().fillMaxWidth()
                                             )
+                                            ExposedDropdownMenu(
+                                                expanded = typeDropdownExpanded,
+                                                onDismissRequest = { typeDropdownExpanded = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("All") },
+                                                    onClick = {
+                                                        selectedEventType = ""
+                                                        typeDropdownExpanded = false
+                                                    }
+                                                )
+                                                allEventTypes.forEach { type ->
+                                                    DropdownMenuItem(
+                                                        text = { Text(type.replaceFirstChar { it.uppercase() }) },
+                                                        onClick = {
+                                                            selectedEventType = type
+                                                            typeDropdownExpanded = false
+                                                        }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
                                     Spacer(Modifier.height(8.dp))
-                                    // Data inceput
-                                    OutlinedTextField(
-                                        value = filterStartDate,
-                                        onValueChange = { filterStartDate = it },
-                                        label = { Text("Data inceput (YYYY-MM-DD)") },
-                                        modifier = Modifier.fillMaxWidth()
-                                    )
-                                    Spacer(Modifier.height(8.dp))
-                                    // Data sfarsit
-                                    OutlinedTextField(
-                                        value = filterEndDate,
-                                        onValueChange = { filterEndDate = it },
-                                        label = { Text("Data sfarsit (YYYY-MM-DD)") },
+                                    // Data inceput si sfarsit + RangeSlider
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        OutlinedTextField(
+                                            value = filterStartDate,
+                                            onValueChange = { newValue ->
+                                                filterStartDate = newValue
+                                                if (isValidEventDateString(newValue)) {
+                                                    updateEventDateRange(newValue, filterEndDate.ifEmpty { eventDateRangeBounds.second.format(DateTimeFormatter.ISO_DATE) })
+                                                }
+                                            },
+                                            placeholder = { Text(eventDateRangeBounds.first.format(DateTimeFormatter.ISO_DATE)) },
+                                            modifier = Modifier.weight(1f),
+                                            textStyle = MaterialTheme.typography.bodyMedium,
+                                            singleLine = true
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        OutlinedTextField(
+                                            value = filterEndDate,
+                                            onValueChange = { newValue ->
+                                                filterEndDate = newValue
+                                                if (isValidEventDateString(newValue)) {
+                                                    updateEventDateRange(filterStartDate.ifEmpty { eventDateRangeBounds.first.format(DateTimeFormatter.ISO_DATE) }, newValue)
+                                                }
+                                            },
+                                            placeholder = { Text(eventDateRangeBounds.second.format(DateTimeFormatter.ISO_DATE)) },
+                                            modifier = Modifier.weight(1f),
+                                            textStyle = MaterialTheme.typography.bodyMedium,
+                                            singleLine = true
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    RangeSlider(
+                                        value = eventDateRange,
+                                        onValueChange = { eventDateRange = it },
+                                        valueRange = 0f..1f,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
@@ -417,6 +515,7 @@ fun AnimalDetailsScreen(animalId: String, token: String, navController: NavContr
                                         selectedEventType = ""
                                         filterStartDate = ""
                                         filterEndDate = ""
+                                        eventDateRange = 0f..1f
                                     }
                                 ) {
                                     Text("Resetează")
@@ -510,7 +609,6 @@ fun AddEventDialog(
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
-    // Fetch event types when dialog opens
     LaunchedEffect(Unit) {
         try {
             val response = RetrofitClient.apiService.getEventTypes()
@@ -587,7 +685,6 @@ fun AddEventDialog(
                         }
                     }
 
-                    // Show event type description
                     eventType.takeIf { it.isNotEmpty() }?.let { type ->
                         eventTypes[type]?.get("description")?.let { description ->
                             Text(

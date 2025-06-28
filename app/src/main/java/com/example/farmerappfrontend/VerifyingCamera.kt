@@ -34,7 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 fun CountingCamera(
     token: String,
     animalIds: List<String>,
-    onComplete: (List<String>) -> Unit // Callback for not-read IDs
+    onComplete: (List<String>) -> Unit
 ) {
     var scannedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
     var popupMessage by remember { mutableStateOf<String?>(null) }
@@ -65,18 +65,17 @@ fun CountingCamera(
         if (isCounting) {
             CameraIDReader(
                 onIDDetected = { id ->
-                    if (id != null && !scannedIds.contains(id)) {
-                        scannedIds = scannedIds + id
+                    if (id != null) {
+
                         val isPresent = animalIds.any { it.trim() == id.trim() }
                         if (isPresent) {
-                            vibrate(100) // Short vibration for present animal
-                            // Fetch animal details
+                            vibrate(100)
                             scope.launch {
                                 try {
                                     val response = RetrofitClient.apiService.getAnimalDetails(id.trim(), token)
                                     if (response.isSuccessful) {
                                         animalDetails = response.body()
-                                        popupMessage = null // Hide the old popup
+                                        popupMessage = null
                                     } else {
                                         animalDetails = null
                                         popupMessage = "ID: $id\nStatus: Present ✅\n(Details unavailable)"
@@ -85,17 +84,16 @@ fun CountingCamera(
                                     animalDetails = null
                                     popupMessage = "ID: $id\nStatus: Present ✅\n(Details unavailable)"
                                 }
-                                // Hide after 5 seconds
-                                kotlinx.coroutines.delay(5000)
+                                kotlinx.coroutines.delay(2000)
                                 animalDetails = null
                                 popupMessage = null
                             }
                         } else {
-                            vibrate(400) // Long vibration for not present animal
+                            vibrate(400)
                             animalDetails = null
                             popupMessage = "ID: $id\nStatus: Not Present ❌"
                             scope.launch {
-                                kotlinx.coroutines.delay(5000)
+                                kotlinx.coroutines.delay(2000)
                                 popupMessage = null
                             }
                         }
@@ -104,13 +102,13 @@ fun CountingCamera(
                 onError = { error ->
                     popupMessage = "Error: $error"
                 },
-                onPartialIdDetected = { /* You can leave this empty if not needed here */ },
+                onPartialIdDetected = {  },
                 modifier = Modifier.fillMaxSize()
 
             )
         }
 
-        // Show animal details dialog if present
+        // Show animal details
         animalDetails?.let { details ->
             AlertDialog(
                 onDismissRequest = { animalDetails = null },

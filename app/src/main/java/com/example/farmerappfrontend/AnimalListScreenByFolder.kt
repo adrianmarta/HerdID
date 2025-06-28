@@ -145,23 +145,21 @@ fun AnimalListScreenByFolder(
         filterBirthDateTo = sliderValueToDate(birthDateRange.endInclusive).format(DateTimeFormatter.ISO_DATE)
     }
 
-    fun applyFilters() {
-        filteredAnimals = animals.filter { animal ->
-            val sexOk = filterSex == null || animal.gender.equals(filterSex, ignoreCase = true)
-            val birthDateOk = (filterBirthDateFrom.isBlank() || animal.birthDate >= filterBirthDateFrom) &&
-                              (filterBirthDateTo.isBlank() || animal.birthDate <= filterBirthDateTo)
-            val speciesOk = filterSpecies.isEmpty() || filterSpecies.contains(animal.species)
-            val milkOk = when {
-                filterMilkYes && !filterMilkNo -> animal.producesMilk == true
-                !filterMilkYes && filterMilkNo -> animal.producesMilk == false
-                filterMilkYes && filterMilkNo -> true
-                else -> true
-            }
-            sexOk && birthDateOk && speciesOk && milkOk
-        }
+    // Adaugă funcția pentru filtrare după eveniment
+    suspend fun filterAnimalsByEventPeriod(eventType: String, startDate: String, endDate: String, token: String): List<AnimalDetails> {
+        val response = RetrofitClient.apiService.getAnimalsByEventTypeAndDate(
+            eventType = eventType,
+            startDate = startDate,
+            endDate = endDate,
+            token = "Bearer $token"
+        )
+        return if (response.isSuccessful) {
+            response.body() ?: emptyList()
+        } else emptyList()
     }
 
-    // Activity result launcher for creating a PDF file
+
+
     val createDocumentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf")
     ) { uri: Uri? ->
@@ -186,7 +184,6 @@ fun AnimalListScreenByFolder(
         }
     }
 
-    // Fetch folder name and animals
     LaunchedEffect(folderId) {
         try {
             isLoading = true
@@ -221,7 +218,7 @@ fun AnimalListScreenByFolder(
         }
     }
 
-    // Search functionality for Add by ID
+    // Search functionality
     LaunchedEffect(addByIdInput) {
         if (addByIdInput.isBlank()) {
             matchingAnimals = emptyList()
@@ -261,6 +258,86 @@ fun AnimalListScreenByFolder(
         }
     }
 
+    // Functie pentru a verifica daca folderul este generat dupa un eveniment
+    fun isGeneratedEventFolder(name: String): Boolean {
+        return name.startsWith("Births") || name.startsWith("Sickness:") || name.startsWith("Vaccination:")
+    }
+
+    // Tabs pentru filtre
+    val baseTabs = listOf("Sex", "Birth Date", "Species", "Milk Producers")
+    val eventTab = if (isGeneratedEventFolder(folderName)) listOf("Event Period") else emptyList()
+    val tabTitles = baseTabs + eventTab
+
+    // State pentru filtrul de perioada eveniment
+    var eventFilterStartDate by remember { mutableStateOf("") }
+    var eventFilterEndDate by remember { mutableStateOf("") }
+    var eventDateRange by remember { mutableStateOf(0f..1f) }
+    // Calculeaza range-ul de date pentru evenimente
+    val eventDateRangeBounds = remember(animals) {
+        val dates = animals.mapNotNull {
+            try { LocalDate.parse(it.birthDate) } catch (e: Exception) { null }
+        }
+        if (dates.isEmpty()) Pair(LocalDate.now(), LocalDate.now())
+        else Pair(dates.minOrNull()!!, dates.maxOrNull()!!)
+    }
+    fun sliderValueToEventDate(value: Float): LocalDate {
+        val daysBetween = ChronoUnit.DAYS.between(eventDateRangeBounds.first, eventDateRangeBounds.second)
+        val daysToAdd = (daysBetween * value).toLong()
+        return eventDateRangeBounds.first.plusDays(daysToAdd)
+    }
+    fun eventDateToSliderValue(date: LocalDate): Float {
+        val daysBetween = ChronoUnit.DAYS.between(eventDateRangeBounds.first, eventDateRangeBounds.second)
+        val daysFromStart = ChronoUnit.DAYS.between(eventDateRangeBounds.first, date)
+        return if (daysBetween > 0) daysFromStart.toFloat() / daysBetween else 0f
+    }
+    fun isValidEventDateString(dateStr: String): Boolean {
+        return try { LocalDate.parse(dateStr); true } catch (e: Exception) { false }
+    }
+    fun eventDateStringToSliderValue(dateStr: String): Float {
+        return try { eventDateToSliderValue(LocalDate.parse(dateStr)) } catch (e: Exception) { 0f }
+    }
+    fun updateEventDateRange(startDate: String, endDate: String) {
+        if (isValidEventDateString(startDate) && isValidEventDateString(endDate)) {
+            val start = eventDateStringToSliderValue(startDate)
+            val end = eventDateStringToSliderValue(endDate)
+            if (start <= end) {
+                eventDateRange = start..end
+            }
+        }
+    }
+    LaunchedEffect(eventDateRange) {
+        eventFilterStartDate = sliderValueToEventDate(eventDateRange.start).format(DateTimeFormatter.ISO_DATE)
+        eventFilterEndDate = sliderValueToEventDate(eventDateRange.endInclusive).format(DateTimeFormatter.ISO_DATE)
+    }
+    fun applyFilters() {
+        // Filtrare standard
+        var result = animals.filter { animal ->
+            val sexOk = filterSex == null || animal.gender.equals(filterSex, ignoreCase = true)
+            val birthDateOk = (filterBirthDateFrom.isBlank() || animal.birthDate >= filterBirthDateFrom) &&
+                    (filterBirthDateTo.isBlank() || animal.birthDate <= filterBirthDateTo)
+            val speciesOk = filterSpecies.isEmpty() || filterSpecies.contains(animal.species)
+            val milkOk = when {
+                filterMilkYes && !filterMilkNo -> animal.producesMilk == true
+                !filterMilkYes && filterMilkNo -> animal.producesMilk == false
+                filterMilkYes && filterMilkNo -> true
+                else -> true
+            }
+            sexOk && birthDateOk && speciesOk && milkOk
+        }
+        if (tabTitles[selectedTab] == "Event Period" && isGeneratedEventFolder(folderName)) {
+            val eventType = when {
+                folderName.startsWith("Births") -> "birth"
+                folderName.startsWith("Sickness:") -> "sickness"
+                folderName.startsWith("Vaccination:") -> "vaccination"
+                else -> ""
+            }
+            scope.launch {
+                filteredAnimals = filterAnimalsByEventPeriod(eventType, eventFilterStartDate, eventFilterEndDate, token)
+            }
+        } else {
+            filteredAnimals = result
+        }
+    }
     Scaffold(
         topBar = {
             TopAppBar(
@@ -347,7 +424,7 @@ fun AnimalListScreenByFolder(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                // Search Bar with Sort Icon
+                // Search Bar
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -403,7 +480,7 @@ fun AnimalListScreenByFolder(
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                // Remove from Folder Button (Moved)
+                // Remove from Folder Button
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -526,7 +603,7 @@ fun AnimalListScreenByFolder(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                val genderSymbol = if (animal.gender.equals("male", ignoreCase = true)) "♂" else "♀"
+                                val genderSymbol = if (animal.gender.equals("m", ignoreCase = true)) "♂" else "♀"
                                 Column(modifier = Modifier.weight(1f)) {
                                     Text("${animal.id} $genderSymbol", style = MaterialTheme.typography.bodyLarge)
                                     Text(
@@ -537,7 +614,7 @@ fun AnimalListScreenByFolder(
                                 }
                                 // Navigation to Animal Details
                                 IconButton(onClick = {
-                                    navController.navigate("animalDetails/${animal.id}")
+                                    navController.navigate("animalDetails/${animal.id}/{token}")
                                 }) {
                                     Icon(
                                         imageVector = Icons.Default.MoreVert,
@@ -722,7 +799,7 @@ fun AnimalListScreenByFolder(
         )
     }
 
-    // Export Message Dialog (also used for event messages)
+    // Export Message Dialog
     popupMessage?.let {
         AlertDialog(
             onDismissRequest = { popupMessage = null },
@@ -743,7 +820,9 @@ fun AnimalListScreenByFolder(
             title = { Text("Filters") },
             text = {
                 Column {
-                    val tabTitles = listOf("Sex", "Birth Date", "Species", "Milk Producers")
+                    val baseTabs = listOf("Sex", "Birth Date", "Species", "Milk Producers")
+                    val eventTab = if (isGeneratedEventFolder(folderName)) listOf("Event Period") else emptyList()
+                    val tabTitles = baseTabs + eventTab
                     ScrollableTabRow(selectedTabIndex = selectedTab) {
                         tabTitles.forEachIndexed { idx, title ->
                             Tab(
@@ -754,8 +833,8 @@ fun AnimalListScreenByFolder(
                         }
                     }
                     Spacer(Modifier.height(12.dp))
-                    when (selectedTab) {
-                        0 -> { // Sex
+                    when (tabTitles[selectedTab]) {
+                        "Sex" -> { // Sex
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(
                                     checked = filterSex == "F",
@@ -770,7 +849,7 @@ fun AnimalListScreenByFolder(
                                 Text("Male", Modifier.clickable { filterSex = if (filterSex == "M") null else "M" })
                             }
                         }
-                        1 -> { // Birth Date
+                        "Birth Date" -> { // Birth Date
                             Column(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -831,7 +910,7 @@ fun AnimalListScreenByFolder(
                                 )
                             }
                         }
-                        2 -> { // Species
+                        "Species" -> { // Species
                             Column {
                                 allSpecies.forEach { species ->
                                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -848,7 +927,7 @@ fun AnimalListScreenByFolder(
                                 }
                             }
                         }
-                        3 -> { // Milk Producers
+                        "Milk Producers" -> { // Milk Producers
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Checkbox(
                                     checked = filterMilkYes,
@@ -861,6 +940,58 @@ fun AnimalListScreenByFolder(
                                     onCheckedChange = { checked -> filterMilkNo = checked }
                                 )
                                 Text("Nu produce lapte", Modifier.clickable { filterMilkNo = !filterMilkNo })
+                            }
+                        }
+                        "Event Period" -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp)
+                            ) {
+                                Text(
+                                    text = "Event Period Range",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    OutlinedTextField(
+                                        value = eventFilterStartDate,
+                                        onValueChange = { newValue ->
+                                            eventFilterStartDate = newValue
+                                            if (isValidEventDateString(newValue)) {
+                                                updateEventDateRange(newValue, eventFilterEndDate.ifEmpty { eventDateRangeBounds.second.format(DateTimeFormatter.ISO_DATE) })
+                                            }
+                                        },
+                                        placeholder = { Text(eventDateRangeBounds.first.format(DateTimeFormatter.ISO_DATE)) },
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        singleLine = true
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    OutlinedTextField(
+                                        value = eventFilterEndDate,
+                                        onValueChange = { newValue ->
+                                            eventFilterEndDate = newValue
+                                            if (isValidEventDateString(newValue)) {
+                                                updateEventDateRange(eventFilterStartDate.ifEmpty { eventDateRangeBounds.first.format(DateTimeFormatter.ISO_DATE) }, newValue)
+                                            }
+                                        },
+                                        placeholder = { Text(eventDateRangeBounds.second.format(DateTimeFormatter.ISO_DATE)) },
+                                        modifier = Modifier.weight(1f),
+                                        textStyle = MaterialTheme.typography.bodyMedium,
+                                        singleLine = true
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                RangeSlider(
+                                    value = eventDateRange,
+                                    onValueChange = { eventDateRange = it },
+                                    valueRange = 0f..1f,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
                             }
                         }
                     }
@@ -881,6 +1012,9 @@ fun AnimalListScreenByFolder(
                         filterMilkYes = false
                         filterMilkNo = false
                         filteredAnimals = animals
+                        eventFilterStartDate = ""
+                        eventFilterEndDate = ""
+                        eventDateRange = 0f..1f
                         showFilterDialog = false
                     }) { Text("Reset") }
                 }
@@ -896,70 +1030,17 @@ fun fetchAnimalsInFolder(folderId: String, token: String, onResult: (List<Animal
             if (response.isSuccessful) {
                 onResult(response.body()?.filterNotNull() ?: emptyList())
             } else {
-                onResult(emptyList()) // Handle failure gracefully
+                onResult(emptyList())
             }
         } catch (e: Exception) {
-            onResult(emptyList()) // Handle exception gracefully
+            onResult(emptyList())
         }
     }
 }
 
-suspend fun handleScannedId(
-    token: String,
-    folderId: String,
-    scannedId: String,
-    currentAnimals: List<AnimalDetails>,
-    onResult: (String) -> Unit
-) {
-    try {
-        // Check if the scanned ID exists in the global list
-        val globalResponse = RetrofitClient.apiService.checkAnimalExists(scannedId, "Bearer $token")
-        if (!globalResponse.isSuccessful || globalResponse.body() != true) {
-            onResult("The ID is not present in the global animal list.")
-            return
-        }
 
-        // Check if the animal is already in the folder
-        if (currentAnimals.any { it.id == scannedId }) {
-            onResult("This animal is already in the folder.")
-            return
-        }
 
-        // Add the animal to the folder
-        val addResponse = RetrofitClient.apiService.addAnimalToFolder(folderId, scannedId, "Bearer $token")
-        if (addResponse.isSuccessful) {
-            onResult("Animal added successfully.")
-        } else {
-            onResult("Failed to add animal to folder: ${addResponse.message()} (Code: ${addResponse.code()})")
-        }
 
-    } catch (e: Exception) {
-        onResult("Error: ${e.message}")
-    }
-}
-
-fun deleteSelectedAnimalsFromFolders(
-    folderId: String,
-    animalIds: List<String>,
-    token: String,
-    onComplete: () -> Unit
-) {
-    CoroutineScope(Dispatchers.IO).launch {
-        try {
-            val response = RetrofitClient.apiService.removeAnimalsFromFolder(folderId, animalIds, "Bearer $token")
-            if (response.isSuccessful) {
-                Log.d("DeleteAnimals", "Animals successfully removed from folder: $folderId")
-                onComplete() // Notify the caller on success
-            } else {
-                Log.e("DeleteAnimals", "Failed to remove animals: ${response.message()}")
-            }
-        } catch (e: Exception) {
-            Log.e("DeleteAnimals", "Error removing animals from folder: ${e.message}")
-        }
-    }
-}
-
-// Update the generateAnimalPDF function to include folder name
 private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<AnimalDetails>, folderName: String) = withContext(Dispatchers.IO) {
     val document = PDDocument()
     var page = PDPage()
@@ -968,7 +1049,6 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
     val margin = 50f
     var currentY = page.mediaBox.height - margin
 
-    // Draw header content with folder name
     contentStream.beginText()
     contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14f)
     contentStream.setTextMatrix(Matrix.getTranslateInstance(margin, currentY))
@@ -988,13 +1068,12 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
     val cellMargin = 5f
     val rowHeight = 20f
     val headerHeight = 25f
-    val tableStartYOffset = 30f // Space after header content
+    val tableStartYOffset = 30f
     val tableBottomY = margin
 
     val columnWidths = floatArrayOf(30f, 80f, 80f, 40f, 100f, tableWidth - 330f)
     val headers = listOf("Nr.", "Specie", "Rasa", "Sex", "Data nastere", "Cod identificare")
 
-    // Function to replace Romanian characters
     fun String.replaceRomanianChars(): String {
         return this
             .replace('ț', 't')
@@ -1015,12 +1094,11 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
         for (i in headers.indices) {
             contentStream.beginText()
             contentStream.setTextMatrix(Matrix.getTranslateInstance(currentX + cellMargin, startY - headerHeight + (headerHeight - 10f) / 2f))
-            contentStream.showText(headers[i].replaceRomanianChars()) // Replace chars in headers too if needed
+            contentStream.showText(headers[i].replaceRomanianChars())
             contentStream.endText()
             currentX += columnWidths[i]
         }
 
-        // Draw header lines
         contentStream.setLineWidth(0.5f)
         contentStream.moveTo(margin, startY - headerHeight)
         contentStream.lineTo(margin + tableWidth, startY - headerHeight)
@@ -1040,7 +1118,6 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
 
 
 
-    // Draw initial header content
     contentStream.beginText()
     contentStream.setFont(PDType1Font.HELVETICA_BOLD, 14f)
     contentStream.setTextMatrix(Matrix.getTranslateInstance(margin, currentY))
@@ -1052,16 +1129,16 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
     contentStream.beginText()
     contentStream.setFont(PDType1Font.HELVETICA, 10f)
     contentStream.setTextMatrix(Matrix.getTranslateInstance(margin, currentY))
-    contentStream.showText("Animal List Export".replaceRomanianChars()) // Placeholder, could add more details if available
+    contentStream.showText("Animal List Export".replaceRomanianChars())
     contentStream.endText()
 
-    currentY -= tableStartYOffset // Space before table
+    currentY -= tableStartYOffset
     val tableStartX = margin
 
     drawHeader(contentStream, currentY)
-    currentY -= headerHeight // Move below header
+    currentY -= headerHeight
 
-    contentStream.setFont(PDType1Font.HELVETICA, 8f) // Use standard font for table content
+    contentStream.setFont(PDType1Font.HELVETICA, 8f)
 
     // Table content
     animals.forEachIndexed { index, animal ->
@@ -1079,7 +1156,7 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
 
         // Draw row content
         var currentColumnX = tableStartX
-        val rowY = currentY - (rowHeight / 2f) + (8f / 2f) // Center text vertically in row
+        val rowY = currentY - (rowHeight / 2f) + (8f / 2f)
 
         // Nr.
         contentStream.beginText()
@@ -1091,14 +1168,14 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
         // Specie
         contentStream.beginText()
         contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
-        contentStream.showText("Ovine".replaceRomanianChars()) // Using placeholder, need actual specie
+        contentStream.showText("Ovine".replaceRomanianChars())
         contentStream.endText()
         currentColumnX += columnWidths[1]
 
         // Rasa
         contentStream.beginText()
         contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
-        contentStream.showText(animal.species.replaceRomanianChars()) // Using species as placeholder for breed for now
+        contentStream.showText(animal.species.replaceRomanianChars())
         contentStream.endText()
         currentColumnX += columnWidths[2]
 
@@ -1106,9 +1183,9 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
         contentStream.beginText()
         contentStream.setTextMatrix(Matrix.getTranslateInstance(currentColumnX + cellMargin, rowY))
         val genderText = when (animal.gender.toLowerCase()) {
-            "male", "m", "♂" -> "male"
-            "female", "f", "♀" -> "female"
-            else -> animal.gender.replaceRomanianChars() // Fallback with replacement
+            "male", "m", "F", "♂" -> "male"
+            "female", "f","M", "♀" -> "female"
+            else -> animal.gender.replaceRomanianChars()
         }
         contentStream.showText(genderText)
         contentStream.endText()
@@ -1128,13 +1205,11 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
         contentStream.endText()
         currentColumnX += columnWidths[5]
 
-        // Draw horizontal line below row
         contentStream.setLineWidth(0.5f)
         contentStream.moveTo(margin, currentY - rowHeight)
         contentStream.lineTo(margin + tableWidth, currentY - rowHeight)
         contentStream.stroke()
 
-        // Draw vertical lines for this row
         currentColumnX = margin
         for (width in columnWidths) {
             contentStream.moveTo(currentColumnX, currentY)
@@ -1146,7 +1221,7 @@ private suspend fun generateAnimalPDF(outputStream: OutputStream, animals: List<
         contentStream.lineTo(margin + tableWidth, currentY - rowHeight)
         contentStream.stroke()
 
-        currentY -= rowHeight // Move to the next row position
+        currentY -= rowHeight
     }
 
 

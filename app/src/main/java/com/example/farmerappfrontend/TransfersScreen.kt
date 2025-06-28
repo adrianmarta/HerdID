@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -22,7 +24,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.ui.res.painterResource
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.material.icons.filled.PictureAsPdf
 import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import java.io.OutputStream
 import com.tom_roush.pdfbox.pdmodel.PDDocument
@@ -48,6 +49,10 @@ fun TransfersScreen(navController: NavController, token: String) {
     val context = LocalContext.current
 
     var selectedTransferForExport by remember { mutableStateOf<AnimalTransfer?>(null) }
+    var selectedTransferForPreview by remember { mutableStateOf<AnimalTransfer?>(null) }
+    var transferAnimals by remember { mutableStateOf<List<AnimalDetails>>(emptyList()) }
+    var isLoadingAnimals by remember { mutableStateOf(false) }
+    
     val createDocumentLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/pdf")
     ) { uri ->
@@ -89,8 +94,158 @@ fun TransfersScreen(navController: NavController, token: String) {
         }
     }
 
+    fun loadTransferAnimals(transfer: AnimalTransfer) {
+        selectedTransferForPreview = transfer
+        isLoadingAnimals = true
+        coroutineScope.launch {
+            try {
+                val response = RetrofitClient.apiService.getAnimalsByIds(transfer.animalIds, "Bearer $token")
+                if (response.isSuccessful) {
+                    transferAnimals = response.body() ?: emptyList()
+                } else {
+                    Toast.makeText(context, "Failed to load animals", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(context, "Error loading animals: ${e.message}", Toast.LENGTH_SHORT).show()
+            } finally {
+                isLoadingAnimals = false
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         fetchTransfers()
+    }
+
+    // Animal Preview Dialog
+    selectedTransferForPreview?.let { transfer ->
+        AlertDialog(
+            onDismissRequest = { 
+                selectedTransferForPreview = null
+                transferAnimals = emptyList()
+            },
+            title = { 
+                Text("Animals in Transfer") 
+            },
+            text = {
+                if (isLoadingAnimals) {
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator()
+                    }
+                } else {
+                    Column {
+                        Text(
+                            text = "Transfer from: ${transfer.senderId}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Total animals: ${transfer.animalIds.size}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        if (transferAnimals.isEmpty()) {
+                            Text("No animal details available")
+                        } else {
+                            LazyColumn(
+                                modifier = Modifier.heightIn(max = 300.dp)
+                            ) {
+                                items(transferAnimals) { animal ->
+                                    Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        elevation = CardDefaults.cardElevation(2.dp)
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.padding(12.dp)
+                                        ) {
+                                            Text(
+                                                text = "ID: ${animal.id}",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = androidx.compose.ui.text.font.FontWeight.Medium
+                                            )
+                                            Text(
+                                                text = "Species: ${animal.species}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Text(
+                                                text = "Gender: ${animal.gender}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                            Text(
+                                                text = "Birth Date: ${animal.birthDate}",
+                                                style = MaterialTheme.typography.bodySmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (transfer.status == TransferStatus.COMPLETED && receivedTransfers.contains(transfer)) {
+                        Button(
+                            onClick = {
+                                coroutineScope.launch {
+                                    try {
+                                        val folderName = "Transfer from ${transfer.senderId} - ${formatTransferDate(transfer.transferDate)}"
+                                        val folderRequest = FolderRequest(name = folderName)
+                                        val createResponse = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
+                                        
+                                        if (createResponse.isSuccessful) {
+                                            val newFolderId = createResponse.body()?.id
+                                            if (newFolderId != null) {
+                                                val addResponse = RetrofitClient.apiService.addAnimalsToFolder(
+                                                    folderId = newFolderId,
+                                                    animalIds = transfer.animalIds,
+                                                    authorization = "Bearer $token"
+                                                )
+                                                
+                                                if (addResponse.isSuccessful) {
+                                                    Toast.makeText(context, "Folder created with ${transfer.animalIds.size} animals!", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    Toast.makeText(context, "Failed to add animals to folder", Toast.LENGTH_SHORT).show()
+                                                }
+                                            } else {
+                                                Toast.makeText(context, "Failed to create folder", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            Toast.makeText(context, "Failed to create folder: ${createResponse.message()}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Error creating folder: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.Folder, contentDescription = null)
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Create Folder")
+                        }
+                    }
+                    Button(
+                        onClick = { 
+                            selectedTransferForPreview = null
+                            transferAnimals = emptyList()
+                        }
+                    ) {
+                        Text("Close")
+                    }
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -134,6 +289,7 @@ fun TransfersScreen(navController: NavController, token: String) {
                 0 -> TransferList(
                     transfers = pendingTransfers,
                     isIncoming = true,
+                    onTransferClick = { transfer -> loadTransferAnimals(transfer) },
                     onAccept = { transferId ->
                         coroutineScope.launch {
                             try {
@@ -148,11 +304,46 @@ fun TransfersScreen(navController: NavController, token: String) {
                                 Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
                             }
                         }
+                    },
+                    onReject = { transferId ->
+                        coroutineScope.launch {
+                            try {
+                                val response = RetrofitClient.apiService.rejectTransfer("Bearer $token", transferId)
+                                if (response.isSuccessful) {
+                                    Toast.makeText(context, "Transfer rejected!", Toast.LENGTH_SHORT).show()
+                                    fetchTransfers()
+                                } else {
+                                    Toast.makeText(context, "Failed to reject transfer: ${response.body()}", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
                     }
                 )
-                1 -> TransferList(transfers = sentTransfers.filter { it.status == TransferStatus.PENDING })
-                2 -> TransferList(
-                    transfers = (sentTransfers.filter { it.status == TransferStatus.COMPLETED } + receivedTransfers),
+                1 -> TransferList(
+                    transfers = sentTransfers.filter { it.status == TransferStatus.PENDING },
+                    onTransferClick = { transfer -> loadTransferAnimals(transfer) },
+                    onCancel = { transferId ->
+                        coroutineScope.launch {
+                            try {
+                                val response = RetrofitClient.apiService.deleteTransfer("Bearer $token", transferId)
+                                if (response.isSuccessful) {
+                                    Toast.makeText(context, "Transfer canceled!", Toast.LENGTH_SHORT).show()
+                                    fetchTransfers()
+                                } else {
+                                    Toast.makeText(context, "Failed to cancel transfer.", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                )
+                2 -> HistoryTransferList(
+                    sentTransfers = sentTransfers.filter { it.status == TransferStatus.COMPLETED },
+                    receivedTransfers = receivedTransfers,
+                    onTransferClick = { transfer -> loadTransferAnimals(transfer) },
                     onExport = { transfer ->
                         selectedTransferForExport = transfer
                         val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
@@ -168,8 +359,11 @@ fun TransfersScreen(navController: NavController, token: String) {
 fun TransferList(
     transfers: List<AnimalTransfer>,
     isIncoming: Boolean = false,
+    onTransferClick: ((AnimalTransfer) -> Unit)? = null,
     onAccept: ((String) -> Unit)? = null,
-    onExport: ((AnimalTransfer) -> Unit)? = null
+    onReject: ((String) -> Unit)? = null,
+    onExport: ((AnimalTransfer) -> Unit)? = null,
+    onCancel: ((String) -> Unit)? = null
 ) {
     if (transfers.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -181,7 +375,8 @@ fun TransferList(
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 8.dp),
+                        .padding(vertical = 8.dp)
+                        .clickable { onTransferClick?.invoke(transfer) },
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
@@ -209,10 +404,34 @@ fun TransferList(
                         Text("Number of animals: ${transfer.animalIds.size}", style = MaterialTheme.typography.bodyMedium)
                         Text("Date: ${formatTransferDate(transfer.transferDate)}", style = MaterialTheme.typography.bodySmall)
 
-                        if (isIncoming && transfer.status == TransferStatus.PENDING && onAccept != null) {
+                        if (isIncoming && transfer.status == TransferStatus.PENDING && onAccept != null && onReject != null) {
                             Spacer(modifier = Modifier.height(8.dp))
-                            Button(onClick = { onAccept(transfer.id) }) {
-                                Text("Accept")
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = { onAccept(transfer.id) },
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Accept")
+                                }
+                                Button(
+                                    onClick = { onReject(transfer.id) },
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Text("Reject")
+                                }
+                            }
+                        }
+                        if (!isIncoming && transfer.status == TransferStatus.PENDING && onCancel != null) {
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Button(
+                                onClick = { onCancel(transfer.id) },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("Cancel")
                             }
                         }
                     }
@@ -239,7 +458,7 @@ fun String.replaceRomanianChars(): String {
 @SuppressLint("NewApi")
 private fun formatTransferDate(dateString: String): String {
     return try {
-        val instant = try { // Try ISO_INSTANT first
+        val instant = try {
             java.time.Instant.parse(dateString)
         } catch (_: Exception) {
             null
@@ -261,7 +480,7 @@ private suspend fun generateTransferPDF(
     transfer: AnimalTransfer,
     token: String
 ) {
-    // Fetch details for sender, receiver, and animals
+    // Fetch details
     val sender = RetrofitClient.apiService.getUserProfile( "Bearer $token")
     val animals = RetrofitClient.apiService.getAnimalsByIds(transfer.animalIds, "Bearer $token").body() ?: emptyList()
 
@@ -309,13 +528,11 @@ private suspend fun generateTransferPDF(
     contentStream.endText()
     yPosition -= 40f
 
-    // Draw table header background
     contentStream.setNonStrokingColor(220, 220, 220)
     contentStream.addRect(tableMargin, yPosition - headerHeight, tableWidth, headerHeight)
     contentStream.fill()
     contentStream.setNonStrokingColor(0, 0, 0)
 
-    // Draw table header text
     contentStream.setFont(PDType1Font.HELVETICA_BOLD, 10f)
     var xPosition = tableMargin
     for ((i, header) in headers.withIndex()) {
@@ -326,7 +543,6 @@ private suspend fun generateTransferPDF(
         xPosition += cellWidths[i]
     }
 
-    // Draw header lines
     contentStream.setLineWidth(0.5f)
     contentStream.moveTo(tableMargin, yPosition - headerHeight)
     contentStream.lineTo(tableMargin + tableWidth, yPosition - headerHeight)
@@ -344,7 +560,6 @@ private suspend fun generateTransferPDF(
 
     yPosition -= headerHeight
 
-    // Draw table content
     contentStream.setFont(PDType1Font.HELVETICA, 10f)
     for (animal in animals) {
         xPosition = tableMargin
@@ -356,12 +571,10 @@ private suspend fun generateTransferPDF(
             contentStream.endText()
             xPosition += cellWidths[i]
         }
-        // Draw horizontal line below row
         contentStream.setLineWidth(0.5f)
         contentStream.moveTo(tableMargin, yPosition)
         contentStream.lineTo(tableMargin + tableWidth, yPosition)
         contentStream.stroke()
-        // Draw vertical lines for this row
         xPosition = tableMargin
         for (width in cellWidths) {
             contentStream.moveTo(xPosition, yPosition)
@@ -378,4 +591,55 @@ private suspend fun generateTransferPDF(
     contentStream.close()
     document.save(outputStream)
     document.close()
+}
+
+@Composable
+fun HistoryTransferList(
+    sentTransfers: List<AnimalTransfer>,
+    receivedTransfers: List<AnimalTransfer>,
+    onTransferClick: ((AnimalTransfer) -> Unit),
+    onExport: ((AnimalTransfer) -> Unit)
+) {
+    if (sentTransfers.isEmpty() && receivedTransfers.isEmpty()) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("No transfers to show.")
+        }
+    } else {
+        LazyColumn(modifier = Modifier.padding(16.dp)) {
+            items(sentTransfers + receivedTransfers) { transfer ->
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .clickable { onTransferClick(transfer) },
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("From: ${transfer.senderId}", style = MaterialTheme.typography.titleMedium)
+                                Text("To: ${transfer.receiverId}", style = MaterialTheme.typography.titleMedium)
+                                Text("Status: ${transfer.status}", style = MaterialTheme.typography.bodyMedium)
+                            }
+                            Row {
+                                if (transfer.status == TransferStatus.COMPLETED) {
+                                    IconButton(onClick = { onExport(transfer) }) {
+                                        Icon(Icons.Default.PictureAsPdf, contentDescription = "Export PDF")
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text("Number of animals: ${transfer.animalIds.size}", style = MaterialTheme.typography.bodyMedium)
+                        Text("Date: ${formatTransferDate(transfer.transferDate)}", style = MaterialTheme.typography.bodySmall)
+                    }
+                }
+            }
+        }
+    }
 } 

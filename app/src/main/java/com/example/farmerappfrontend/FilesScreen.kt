@@ -91,7 +91,7 @@ fun FilesScreen(navController: NavController, token: String) {
                     val folderRequest = FolderRequest(name = folderName)
                     val response = RetrofitClient.apiService.createFolder("Bearer $token", folderRequest)
                     if (response.isSuccessful) {
-                        fetchFiles() // Refresh the list after creating a folder
+                        fetchFiles()
                     } else {
                         errorMessage = "Failed to create folder: ${response.message()}"
                     }
@@ -117,16 +117,14 @@ fun FilesScreen(navController: NavController, token: String) {
                         return@forEach
                     }
                 }
-                // Refresh the folder list after deletion
                 fetchFiles()
-                selectedFolders = emptySet() // Clear selection
+                selectedFolders = emptySet()
             } catch (e: Exception) {
                 errorMessage = "Error deleting folders: ${e.message}"
             }
         }
     }
 
-    // Function to generate folder based on event criteria
     @SuppressLint("NewApi")
     fun generateFolderByEvents(
         eventType: EventType,
@@ -136,7 +134,7 @@ fun FilesScreen(navController: NavController, token: String) {
     ) {
         coroutineScope.launch {
             try {
-                // Create the folder first
+
                 val folderName = when (eventType) {
                     EventType.BIRTH -> {
                         when (timeRange) {
@@ -161,7 +159,7 @@ fun FilesScreen(navController: NavController, token: String) {
                     return@launch
                 }
 
-                // Fetch animals based on event criteria
+                // Fetch animals
                 val animalsResponse = when (eventType) {
                     EventType.BIRTH -> {
                         val startDate = when (timeRange) {
@@ -213,7 +211,6 @@ fun FilesScreen(navController: NavController, token: String) {
                     }
                 }
 
-                // Refresh the folder list
                 fetchFiles()
             } catch (e: Exception) {
                 errorMessage = "Error generating folder: ${e.message}"
@@ -257,14 +254,11 @@ fun FilesScreen(navController: NavController, token: String) {
                 }
                 if (response.isSuccessful) {
                     val newAnimals = response.body() ?: emptyList()
-                    // Fetch current animals in the folder
                     val currentResponse = RetrofitClient.apiService.getAnimalsByFolderId(folder.id, "Bearer $token")
                     val currentAnimalIds = currentResponse.body()?.map { it.id } ?: emptyList()
-                    // Remove all current animals
                     if (currentAnimalIds.isNotEmpty()) {
                         RetrofitClient.apiService.removeAnimalsFromFolder(folder.id, currentAnimalIds, "Bearer $token")
                     }
-                    // Add new animals
                     if (newAnimals.isNotEmpty()) {
                         RetrofitClient.apiService.addAnimalsToFolder(folder.id, newAnimals.map { it.id }, "Bearer $token")
                     }
@@ -278,14 +272,13 @@ fun FilesScreen(navController: NavController, token: String) {
         }
     }
 
-    // Function to check if a folder is generated (has specific naming patterns)
+    // Function to check if a folder is generated
     fun isGeneratedFolder(folderName: String): Boolean {
         return folderName.startsWith("Births") || 
                folderName.startsWith("Sickness:") || 
                folderName.startsWith("Vaccination:")
     }
 
-    // Function to rename a folder
     fun renameFolder(folderId: String, newName: String) {
         if (newName.isNotBlank()) {
             coroutineScope.launch {
@@ -293,7 +286,7 @@ fun FilesScreen(navController: NavController, token: String) {
                     val folderRequest = FolderRequest(name = newName)
                     val response = RetrofitClient.apiService.renameFolder(folderId, "Bearer $token", folderRequest)
                     if (response.isSuccessful) {
-                        fetchFiles() // Refresh the list after renaming
+                        fetchFiles()
                         editingFolderId = null
                         editingFolderName = ""
                     } else {
@@ -308,17 +301,8 @@ fun FilesScreen(navController: NavController, token: String) {
         }
     }
 
-    // Function to handle double-click for renaming
-    fun handleFolderClick(folder: Folder) {
-        if (!isGeneratedFolder(folder.name)) {
-            editingFolderId = folder.id
-            editingFolderName = folder.name
-        } else {
-            navController.navigate("folder/${folder.id}/animals/$token")
-        }
-    }
 
-    // Fetch files when the screen is first loaded
+
     LaunchedEffect(Unit) {
         fetchFiles()
     }
@@ -434,7 +418,7 @@ fun FilesScreen(navController: NavController, token: String) {
         ) {
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Display error message if any
+
             errorMessage?.let {
                 Text(
                     it,
@@ -446,7 +430,7 @@ fun FilesScreen(navController: NavController, token: String) {
 
             Spacer(modifier = Modifier.height(8.dp))
 
-            // Top Buttons (Add File, Generate Folder)
+            // Top Buttons
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -482,7 +466,7 @@ fun FilesScreen(navController: NavController, token: String) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f), // Ensure it takes the available space
+                    .weight(1f),
                 contentPadding = PaddingValues(vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -500,7 +484,7 @@ fun FilesScreen(navController: NavController, token: String) {
                             },
                         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
                         colors = if (selectedFolders.contains(folder.id)) {
-                            CardDefaults.cardColors(containerColor = Color(0xFF90CAF9)) // Highlight selected
+                            CardDefaults.cardColors(containerColor = Color(0xFF90CAF9))
                         } else {
                             CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
                         }
@@ -583,7 +567,6 @@ fun FilesScreen(navController: NavController, token: String) {
                                 }
                             )
                             
-                            // Only show refresh button for generated folders
                             if (isGeneratedFolder(folder.name)) {
                                 IconButton(onClick = { refreshFolderAnimals(folder) }) {
                                     Icon(Icons.Default.Refresh, contentDescription = "Refresh Animals")
@@ -614,7 +597,6 @@ fun FilesScreen(navController: NavController, token: String) {
                 }
             }
 
-            // Show Toast for reload/refresh
             toastMessage?.let { msg ->
                 LaunchedEffect(msg) {
                     Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()

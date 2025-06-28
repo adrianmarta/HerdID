@@ -2,7 +2,7 @@ package com.example.farmerappfrontend
 
 import com.google.gson.annotations.SerializedName
 
-// Models.kt
+
 
 
 data class LoginRequest(val id: String, val email: String, val password:String)
@@ -13,7 +13,7 @@ data class UserProfile(val id: String, val name: String, val dob: String, val ad
 data class Animal(val id: String, val gender: String, val birthDate: String,val species:String)
 data class AnimalDetails(val id: String, val gender: String, val birthDate: String,val species:String,val producesMilk:Boolean)
 data class FolderRequest(
-    val name: String // Owner ID
+    val name: String
 )
 data class ScannedAnimalStatus(
     val animal: Animal? = null,
@@ -105,7 +105,8 @@ data class PageResponse<T>(
 
 enum class TransferStatus {
     PENDING,
-    COMPLETED
+    COMPLETED,
+    REJECTED
 }
 
 data class AnimalTransfer(
